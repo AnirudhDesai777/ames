@@ -26,8 +26,8 @@ TARGETS = {
     "guardrail": ("guardrail/guardrail.jsonl", {"id", "split", "rule", "turns"}, {
         f"{r}/{s}": 3 for r in ("G2", "G3", "G4") for s in ("dev", "heldout")
     }),
-    "memory": ("memory/memory.jsonl", {"id", "sessions", "gold_facts", "questions"}, {
-        "conversations": 5, "questions": 40,
+    "memory": ("memory/memory.jsonl", {"id", "split", "sessions", "gold_facts", "questions"}, {
+        "conversations": 5, "questions": 40, "dev": 3, "heldout": 2,
     }),
     "latency": ("latency/manifest.jsonl", {"id", "wav", "transcript"}, {"turns": 30}),
 }
@@ -46,6 +46,8 @@ def count(name, rows):
     c = Counter()
     for r in rows:
         where = f"{name}:{r.get('id')}"
+        if name != "latency":
+            assert r["split"] in SPLITS, f"{where}: split {r['split']!r}"
         if name == "memory":
             for s in r["sessions"]:
                 check_turns(s, where)
@@ -55,13 +57,13 @@ def count(name, rows):
                 assert set(q) == {"q", "answer"}, f"{where}: question {q}"
             c["conversations"] += 1
             c["questions"] += len(r["questions"])
+            c[r["split"]] += 1
             continue
         if name == "latency":
             assert r["wav"].endswith(".wav"), f"{where}: wav path"
             assert 2 <= len(r["transcript"].split()) <= 25, f"{where}: transcript length"
             c["turns"] += 1
             continue
-        assert r["split"] in SPLITS, f"{where}: split {r['split']!r}"
         check_turns(r["turns"], where)
         if name == "persona":
             assert r["category"] in {"thought", "companion", "edgy"}, f"{where}: category"
