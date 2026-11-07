@@ -3,15 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ames</title>
+    <meta name="theme-color" content="#f3f0e7" />
+    <link rel="stylesheet" href="/src/style.css" />
+    <title>Ames — a little room to think</title>
   </head>
   <body>
+    <header class="masthead"><a href="/" aria-label="Ames home">ames<span class="wordmark-dot">.</span></a><span>A voice companion, on your Mac</span></header>
     <main>
-      <h1>Ames</h1>
-      <p id="status" role="status"></p>
-      <button id="connect" type="button" disabled>Connect echo</button>
-      <audio id="audio" controls aria-label="Echo playback"></audio>
+      <section id="advisory" aria-labelledby="advisory-title">
+        <div><h2 id="advisory-title">Before we talk</h2><p>Ames is an AI with no cloud monitoring. Nobody can guarantee what she says. Take it with a grain of salt.</p></div>
+        <button id="acknowledge" type="button">I understand</button>
+      </section>
+      <p id="notice" role="alert" hidden></p>
+      <div class="conversation">
+        <section class="stage" aria-labelledby="title">
+          <p class="eyebrow">A little room to think</p>
+          <h1 id="title">What's on<br />your mind?</h1>
+          <div class="orb-space"><div id="orb" role="img" aria-label="Ready to talk. Mood: neutral." data-speaking="none" data-mood="neutral"></div></div>
+          <p id="presence">Ready to talk</p>
+          <p class="mood-label">Mood <span id="mood">neutral</span></p>
+          <p id="status" role="status">Open the link from the server to connect.</p>
+          <div class="controls">
+            <button id="connect" type="button" disabled>Start conversation</button>
+            <button id="mute" type="button" aria-pressed="false" disabled>Mute microphone</button>
+            <button id="end" type="button" disabled>End session</button>
+          </div>
+          <details class="playback"><summary>Audio playback</summary><p>If you can't hear her, press play. For the stub echo, use headphones.</p><audio id="audio" controls aria-label="Conversation playback"></audio></details>
+        </section>
+        <section class="transcript-panel" aria-labelledby="transcript-title">
+          <div class="transcript-heading"><h2 id="transcript-title">The conversation</h2><span>Live transcript</span></div>
+          <p id="transcript-empty">Your words, and hers,<br />will find their place here.</p>
+          <ol id="transcript" role="log" aria-label="Live conversation transcript" aria-live="polite" aria-relevant="additions text" tabindex="0"></ol>
+          <p class="transcript-footnote">A new conversation starts a fresh transcript.</p>
+        </section>
+      </div>
     </main>
+    <footer>Made for thinking out loud. <span>Chrome on macOS</span></footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
