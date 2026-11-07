@@ -324,13 +324,19 @@ def test_every_delete_advances_epoch_even_if_already_absent(repository, tmp_path
 
 
 @pytest.mark.parametrize("delete_all", [False, True])
-def test_failed_delete_rolls_back_fact_turn_entity_alias_and_epoch(repository, delete_all):
+@pytest.mark.parametrize("failure", ["DELETE ON alias", "UPDATE ON delete_epoch"])
+def test_failed_delete_rolls_back_fact_turn_entity_alias_and_epoch(repository, delete_all, failure):
     topic = repository.add_entity("Topic", "SQL")
     repository.add_alias("databases", topic)
     fact = repository.add_relation(1, "studies", object_id=topic)
     repository.add_turn("session", "user", "I study SQL.")
+    tables = ("turn", "relation", "entity", "alias", "delete_epoch")
+    before = {
+        table: repository.connection.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
+        for table in tables
+    }
     repository.connection.execute(
-        "CREATE TRIGGER reject_alias_delete BEFORE DELETE ON alias "
+        f"CREATE TRIGGER reject_delete BEFORE {failure} "
         "BEGIN SELECT RAISE(ABORT, 'failed delete'); END"
     )
     with pytest.raises(sqlite3.IntegrityError, match="failed delete"):
@@ -338,11 +344,11 @@ def test_failed_delete_rolls_back_fact_turn_entity_alias_and_epoch(repository, d
             repository.delete_everything()
         else:
             repository.delete_relation(fact)
-    assert len(repository.list_relations()) == 1
-    assert len(repository.pending_turns()) == 1
-    assert repository.add_entity("Topic", "SQL") == topic
-    assert repository.connection.execute("SELECT count(*) FROM alias").fetchone()[0] == 1
-    assert repository.delete_epoch() == 0
+    after = {
+        table: repository.connection.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
+        for table in tables
+    }
+    assert after == before
 
 
 def test_turns_keep_spoken_text_and_pending_users_are_oldest_first(repository):
