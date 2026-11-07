@@ -8,6 +8,7 @@ from string import punctuation
 MOODS = ("neutral", "amused", "excited", "soft", "annoyed", "concerned")
 CONTROL_TOKEN = re.compile(r"<state mood=(" + "|".join(MOODS) + r") crisis=([01])>")
 ALLOWED_TAGS = frozenset(("<laugh>", "<chuckle>", "<sigh>", "<gasp>", "<groan>", "<yawn>"))
+TAG_SHAPE = re.compile(r"<(?:[A-Za-z/][A-Za-z0-9_=-]*|state[A-Za-z0-9_= -]*)")
 MARKUP = ALLOWED_TAGS | {
     f"<state mood={mood} crisis={crisis}>" for mood in MOODS for crisis in (0, 1)
 }
@@ -36,6 +37,20 @@ def markup_at(text: str, index: int) -> str | None:
         if candidate.startswith(markup):
             return markup
     if any(markup.startswith(candidate) for markup in MARKUP):
+        return None
+    return ""
+
+
+def tag_at(text: str, index: int) -> str | None:
+    candidate = text[index : index + 33]
+    end = candidate.find(">")
+    if end != -1:
+        candidate = candidate[: end + 1]
+    if len(candidate) > 32:
+        return ""
+    if candidate.endswith(">"):
+        return candidate if TAG_SHAPE.fullmatch(candidate[:-1]) else ""
+    if candidate == "<" or TAG_SHAPE.fullmatch(candidate):
         return None
     return ""
 
@@ -80,7 +95,7 @@ def parse_chunk(state: ParserState, text: str, *, final: bool = False) -> Parsed
     while index < len(text):
         char = text[index]
         if char == "<":
-            tag = markup_at(text, index)
+            tag = tag_at(text, index)
             if tag is None and not final:
                 state = replace(state, pending=text[index:])
                 break

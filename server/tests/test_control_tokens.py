@@ -39,23 +39,23 @@ def test_partial_control_token_emits_nothing():
 
 
 @pytest.mark.parametrize(
-    "token",
+    ("token", "expected"),
     [
-        "<state mood=happy crisis=0>",
-        "<state mood=soft crisis=2>",
-        "<state mood=soft>",
-        "<state crisis=0>",
-        "<state mood=soft crisis=0 extra=1>",
-        '<state mood="soft" crisis=0>',
-        "<state mood=SOFT crisis=0>",
+        ("<state mood=happy crisis=0>", ""),
+        ("<state mood=soft crisis=2>", ""),
+        ("<state mood=soft>", ""),
+        ("<state crisis=0>", ""),
+        ("<state mood=soft crisis=0 extra=1>", "<state mood=soft crisis=0 extra=1>"),
+        ('<state mood="soft" crisis=0>', '<state mood="soft" crisis=0>'),
+        ("<state mood=SOFT crisis=0>", ""),
     ],
 )
-def test_malformed_control_token_at_every_boundary(token):
+def test_malformed_control_token_at_every_boundary(token, expected):
     reply = token + "Hello."
     for split in range(len(reply) + 1):
         state, tts, transcript, errors = parse_parts([reply[:split], reply[split:]])
         assert (state.mood, state.crisis) == ("neutral", 0)
-        assert tts == transcript == token + "Hello."
+        assert tts == transcript == expected + "Hello."
         assert errors == ["control_token_malformed"]
 
 
@@ -102,10 +102,12 @@ def test_allowed_tags_are_only_in_tts_at_every_boundary(tag):
 @pytest.mark.parametrize(
     ("markup", "tts_markup", "transcript_markup"),
     [
-        ("<unknown>", "<unknown>", "<unknown>"),
-        ("</laugh>", "</laugh>", "</laugh>"),
+        ("<unknown>", "", ""),
+        ("<bogus>", "", ""),
+        ("<smile>", "", ""),
+        ("</laugh>", "", ""),
         ('<laugh volume="loud">', '<laugh volume="loud">', '<laugh volume="loud">'),
-        ("<LAUGH>", "<LAUGH>", "<LAUGH>"),
+        ("<LAUGH>", "", ""),
         ("*laughs*", "laughs", "laughs"),
         ("*laughs <gasp> quietly*", "laughs <gasp> quietly", "laughs  quietly"),
         ("<state mood=annoyed crisis=1>", "", ""),
@@ -121,6 +123,45 @@ def test_inline_markup_at_every_boundary(markup, tts_markup, transcript_markup):
         assert not errors
 
 
+@pytest.mark.parametrize("tag", ["<bogus>", "<smile>", "</laugh>"])
+def test_unknown_tags_after_allowed_tag_at_every_boundary(tag):
+    reply = f"<state mood=amused crisis=0>ha <laugh> ok {tag} done"
+    for parts in [[reply[:split], reply[split:]] for split in range(len(reply) + 1)] + [
+        list(reply)
+    ]:
+        state, tts, transcript, errors = parse_parts(parts)
+        assert tts == "ha <laugh> ok  done"
+        assert transcript == "ha  ok  done"
+        assert not state.pending
+        assert not errors
+
+
+@pytest.mark.parametrize(
+    ("markup", "expected"),
+    [
+        ("<a1_b-c=d>", ""),
+        ("<state anything=1 extra>", ""),
+        ("<name space>", "<name space>"),
+        ("<state\tbad>", "<state\tbad>"),
+        ("<a/b>", "<a/b>"),
+        ("<>", "<>"),
+        ("<" + "a" * 30 + ">", ""),
+        ("<" + "a" * 31 + ">", "<" + "a" * 31 + ">"),
+        ("<bad!<smile>>", "<bad!>"),
+        ("<" + "a" * 32 + "<smile>", "<" + "a" * 32),
+    ],
+)
+def test_tag_shape_and_limit_at_every_boundary(markup, expected):
+    reply = "<state mood=soft crisis=0>" + markup
+    for parts in [[reply[:split], reply[split:]] for split in range(len(reply) + 1)] + [
+        list(reply)
+    ]:
+        state, tts, transcript, errors = parse_parts(parts)
+        assert tts == transcript == expected
+        assert not state.pending
+        assert not errors
+
+
 def test_sanitizer_handles_multiple_boundaries_in_one_reply():
     reply = "<state mood=excited crisis=0><laugh>Hi.<unknown>*waves*Bye.<sigh>"
     for first in range(len(reply) + 1):
@@ -128,13 +169,15 @@ def test_sanitizer_handles_multiple_boundaries_in_one_reply():
             state, tts, transcript, errors = parse_parts(
                 [reply[:first], reply[first:second], reply[second:]]
             )
-            assert tts == "<laugh>Hi.<unknown>waves*Bye.<sigh>"
-            assert transcript == "Hi.<unknown>waves*Bye."
+            assert tts == "<laugh>Hi.waves*Bye.<sigh>"
+            assert transcript == "Hi.waves*Bye."
             assert not state.pending
             assert not errors
 
 
-@pytest.mark.parametrize("suffix", ["<", "<laugh", "<state mood=soft crisis=1"])
+@pytest.mark.parametrize(
+    "suffix", ["<", "<laugh", "<bogus", "<smile", "</laugh", "<state mood=soft crisis=1"]
+)
 @pytest.mark.parametrize("prefix", ["", "<state mood=neutral crisis=0>Hi."])
 def test_held_candidate_is_emitted_at_final_at_every_boundary(prefix, suffix):
     reply = prefix + suffix
@@ -170,8 +213,8 @@ def test_partial_inline_tag_waits_for_closing_chunk():
 def test_missing_control_token_still_sanitizes_first_tag(tag):
     state, tts, transcript, errors = parse_parts(list(tag + "Hello."))
     assert (state.mood, state.crisis) == ("neutral", 0)
-    assert tts == tag + "Hello."
-    assert transcript == ("" if tag == "<laugh>" else tag) + "Hello."
+    assert tts == (tag if tag == "<laugh>" else "") + "Hello."
+    assert transcript == "Hello."
     assert errors == ["control_token_missing"]
 
 
@@ -187,7 +230,7 @@ def test_final_call_can_supply_text_and_keeps_unfinished_words():
 
 def test_transcript_has_no_tags_in_any_emitted_chunk():
     state = ParserState()
-    reply = "<state mood=soft crisis=0><sigh>Hi.*laughs* Bye.<laugh>"
+    reply = "<state mood=soft crisis=0><sigh>Hi.<bogus>*laughs* Bye.<smile></laugh><laugh>"
     for part in [*reply, ""]:
         result = parse_chunk(state, part, final=not part)
         state = result.state
@@ -198,6 +241,7 @@ def test_transcript_has_no_tags_in_any_emitted_chunk():
     ("text", "expected"),
     [
         ("3 < 5 is true. Next sentence.", "3 < 5 is true. Next sentence."),
+        ("x < y and y > z", "x < y and y > z"),
         ("2*3 is 6 and 4*5 is 20.", "2*3 is 6 and 4*5 is 20."),
         ("This is *really* good.", "This is really good."),
         ("<3 you", "<3 you"),
@@ -237,7 +281,7 @@ def test_leading_literal_angle_bracket_resolves_without_final():
 
 
 @pytest.mark.parametrize("prefix", ["", "<state mood=soft crisis=0>"])
-@pytest.mark.parametrize("stray", ["< ", "<3", "<unknown", "<laugh ", "<state\t", "<" + "a" * 64])
+@pytest.mark.parametrize("stray", ["< ", "<3", "<laugh ", "<state\t", "<" + "a" * 64])
 def test_long_tail_after_stray_angle_bracket_streams_before_final(prefix, stray):
     tail = " words keep streaming." * 1000
     first = parse_chunk(ParserState(), prefix + stray)
