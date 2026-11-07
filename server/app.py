@@ -76,7 +76,10 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
         )
         tokens = request.headers.getall("X-Ames-Token", [])
         if not public and (
-            len(tokens) != 1 or not secrets.compare_digest(tokens[0].encode(), token.encode())
+            len(tokens) != 1
+            or not secrets.compare_digest(
+                tokens[0].encode(errors="surrogateescape"), token.encode()
+            )
         ):
             raise web.HTTPUnauthorized(text="Missing or invalid token")
         return await handler(request)

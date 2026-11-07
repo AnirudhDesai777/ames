@@ -75,6 +75,22 @@ async def test_missing_or_wrong_token(client, method, path, token):
     assert response.status == 401
 
 
+async def test_invalid_utf8_token_returns_401(client):
+    reader, writer = await asyncio.open_connection(client.server.host, client.server.port)
+    try:
+        writer.write(
+            b"GET /api/health HTTP/1.1\r\n"
+            b"Host: 127.0.0.1:8765\r\n"
+            b"X-Ames-Token: \xff\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        await writer.drain()
+        assert await reader.readline() == b"HTTP/1.1 401 Unauthorized\r\n"
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
 @pytest.mark.parametrize("host", ["127.0.0.1:8765", "localhost:8765"])
 async def test_health_with_same_origin_or_no_origin(client, host):
     for origin in [None, f"http://{host}"]:
