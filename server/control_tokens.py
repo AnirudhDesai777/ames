@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 
 MOODS = ("neutral", "amused", "excited", "soft", "annoyed", "concerned")
 CONTROL_TOKEN = re.compile(r"<state mood=(" + "|".join(MOODS) + r") crisis=([01])>")
+ALLOWED_TAGS = frozenset(("<laugh>", "<chuckle>", "<sigh>", "<gasp>", "<groan>", "<yawn>"))
 
 
 @dataclass(frozen=True)
@@ -49,4 +50,25 @@ def parse_chunk(state: ParserState, text: str, *, final: bool = False) -> Parsed
         else:
             error_code = "control_token_missing"
 
-    return ParsedChunk(state, text, text, error_code)
+    tts = []
+    transcript = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char in "<*":
+            closing = ">" if char == "<" else "*"
+            end = text.find(closing, index + 1)
+            if end == -1:
+                if not final:
+                    state = replace(state, pending=text[index:])
+                break
+            tag = text[index : end + 1]
+            if tag in ALLOWED_TAGS:
+                tts.append(tag)
+            index = end + 1
+        else:
+            tts.append(char)
+            transcript.append(char)
+            index += 1
+
+    return ParsedChunk(state, "".join(tts), "".join(transcript), error_code)
