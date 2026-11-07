@@ -23,7 +23,7 @@ Read this before searching. Paths marked (planned) do not exist yet; the first i
 | `docs/reviews/` | EGM review reports on the design and on PRs | Before changing a design decision |
 | `docs/architecture/` (planned) | C4 diagrams (Mermaid) | Before changing how components connect |
 | `server/` | Python server: Pipecat SmallWebRTC echo, model-free stages and tests | Backend issues |
-| `web/` (planned) | Browser client: Vite and TypeScript UI | UI issues |
+| `web/` | Browser client: Vite and TypeScript scaffold, local WebRTC config and tests | UI issues |
 | `persona/` (planned) | Ames character sheet and system prompt, versioned | Persona, tone, or guardrail issues |
 | `evals/` (planned) | Frozen eval sets and runners (persona, crisis, memory, latency) | Any change that can move an eval score |
 | `.github/` | PR template and CI workflows | Opening a PR or changing CI |
