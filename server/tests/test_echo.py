@@ -11,7 +11,7 @@ from pipecat.frames.frames import InputAudioRawFrame, OutputAudioRawFrame, TextF
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.tests.utils import run_test
 
-from server.echo import echo_connection, echo_pipeline
+from server.echo import echo_connection, echo_pipeline, run_echo
 from server.stubs import StubLLM, StubSTT, StubTTS, model_stages
 
 
@@ -77,6 +77,14 @@ async def test_server_ice_servers_are_empty():
         assert connection.ice_servers == []
     finally:
         await connection.disconnect()
+
+
+async def test_failed_pipeline_setup_closes_connection(monkeypatch):
+    monkeypatch.delenv("AMES_STUB", raising=False)
+    connection = echo_connection()
+    with pytest.raises(RuntimeError, match="AMES_STUB=1"):
+        await run_echo(connection)
+    assert connection.pc.connectionState == "closed"
 
 
 def test_stub_import_does_not_load_mlx():

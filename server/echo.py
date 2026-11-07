@@ -19,22 +19,22 @@ def echo_connection() -> SmallWebRTCConnection:
 
 
 async def run_echo(connection: SmallWebRTCConnection):
-    transport = SmallWebRTCTransport(
-        connection,
-        TransportParams(audio_in_enabled=True, audio_out_enabled=True),
-    )
-    worker = PipelineWorker(
-        Pipeline([transport.input(), echo_pipeline(), transport.output()]),
-        params=PipelineParams(audio_in_sample_rate=16000, audio_out_sample_rate=16000),
-        enable_rtvi=False,
-    )
-    runner = WorkerRunner(handle_sigint=False)
-
-    @transport.event_handler("on_client_disconnected")
-    async def on_client_disconnected(transport, client):
-        await runner.cancel()
-
     try:
+        transport = SmallWebRTCTransport(
+            connection,
+            TransportParams(audio_in_enabled=True, audio_out_enabled=True),
+        )
+        worker = PipelineWorker(
+            Pipeline([transport.input(), echo_pipeline(), transport.output()]),
+            params=PipelineParams(audio_in_sample_rate=16000, audio_out_sample_rate=16000),
+            enable_rtvi=False,
+        )
+        runner = WorkerRunner(handle_sigint=False)
+
+        @transport.event_handler("on_client_disconnected")
+        async def on_client_disconnected(transport, client):
+            await runner.cancel()
+
         await runner.add_workers(worker)
         await runner.run()
     finally:
