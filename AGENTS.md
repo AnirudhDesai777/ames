@@ -11,6 +11,28 @@ Rules for any coding agent (Codex, Claude Code) working in this repo.
 
 Pipeline per issue: issue -> builder (Codex) -> PR -> EGM review -> fixes -> maintainer merges.
 
+## Repo map
+
+Read this before searching. Paths marked (planned) do not exist yet; the first issue that needs one creates it at that path.
+
+| Path | What lives there | Read it when |
+|---|---|---|
+| `AGENTS.md` | These rules | Always, first |
+| `docs/design.md` | v1 design: pipeline, budgets, memory schema, persona, guardrails | Before any feature work |
+| `docs/reviews/` | EGM review reports on the design and on PRs | Before changing a design decision |
+| `docs/architecture/` (planned) | C4 diagrams (Mermaid) | Before changing how components connect |
+| `server/` (planned) | Python server: Pipecat pipeline, STT, LLM, TTS, memory, HTTP API | Backend issues |
+| `web/` (planned) | Browser client: Vite and TypeScript UI | UI issues |
+| `persona/` (planned) | Ames character sheet and system prompt, versioned | Persona, tone, or guardrail issues |
+| `evals/` (planned) | Frozen eval sets and runners (persona, crisis, memory, latency) | Any change that can move an eval score |
+| `.github/` | PR template and CI workflows | Opening a PR or changing CI |
+| `.githooks/` | Local git hooks (blocks pushes to main) | Never edit without an issue |
+
+Rules for the map:
+- Start from the issue, then the files it names, then this map. Do not scan the whole repo.
+- A PR that adds or removes a top-level directory updates this table in the same PR.
+- Do not edit `docs/reviews/` or frozen eval sets unless the issue says to.
+
 ## Scope
 
 - Build only what the issue asks. If you find something else worth doing, write it in the PR under "Follow-ups". Do not build it.
