@@ -201,3 +201,181 @@ def test_sql_text_is_bound_as_data(repository):
     repository.add_relation(1, "likes", value=text)
     assert repository.list_relations()[0]["value"] == text
     assert repository.add_entity("Topic", text) == entity
+
+
+def test_delete_cascades_to_orphan_entities_and_aliases_but_keeps_neighbours(repository):
+    friend = repository.add_entity("Person", "friend")
+    topic = repository.add_entity("Topic", "SQL")
+    repository.add_alias("friend", friend)
+    repository.add_alias("databases", topic)
+    repository.add_alias("me", 1)
+    knows = repository.add_relation(1, "knows", object_id=friend)
+    studies = repository.add_relation(friend, "studies", object_id=topic)
+
+    assert repository.delete_relation(knows)
+    assert repository.delete_epoch() == 1
+    assert [row["id"] for row in repository.list_relations()] == [studies]
+    assert repository.connection.execute("SELECT count(*) FROM alias").fetchone()[0] == 3
+    assert repository.delete_relation(studies)
+    assert repository.delete_epoch() == 2
+    assert repository.list_relations() == []
+    assert [tuple(row) for row in repository.connection.execute("SELECT id, type FROM entity")] == [
+        (1, "User")
+    ]
+    assert [tuple(row) for row in repository.connection.execute("SELECT * FROM alias")] == [
+        ("me", 1)
+    ]
+
+
+def test_delete_removes_orphan_subject_and_preserves_a_shared_object(repository):
+    event = repository.add_entity("Event", "exam")
+    place = repository.add_entity("Place", "library")
+    repository.add_alias("the exam", event)
+    relation = repository.add_relation(event, "related_to", object_id=place)
+    repository.add_relation(1, "lives_in", object_id=place)
+    repository.delete_relation(relation)
+    assert (
+        repository.connection.execute("SELECT id FROM entity WHERE id = ?", (event,)).fetchone()
+        is None
+    )
+    assert repository.connection.execute("SELECT * FROM alias").fetchall() == []
+    assert repository.connection.execute("SELECT id FROM entity WHERE id = ?", (place,)).fetchone()
+
+
+def test_foreign_keys_cascade_relations_in_both_directions(repository):
+    event = repository.add_entity("Event", "exam")
+    repository.add_alias("the exam", event)
+    repository.add_relation(1, "related_to", object_id=event)
+    repository.add_relation(event, "scheduled_on", value="2026-11-10")
+    with repository.connection:
+        repository.connection.execute("DELETE FROM entity WHERE id = ?", (event,))
+    assert repository.list_relations() == []
+    assert repository.connection.execute("SELECT * FROM alias").fetchall() == []
+
+
+def test_delete_everything_keeps_only_user_and_metadata(repository):
+    topic = repository.add_entity("Topic", "SQL")
+    repository.add_alias("databases", topic)
+    repository.add_alias("me", 1)
+    repository.add_relation(1, "studies", object_id=topic)
+    repository.add_turn("session", "user", "I study SQL.")
+    repository.add_turn("session", "ames", "How is that going?")
+    repository.delete_everything()
+    for table in ("turn", "relation", "alias"):
+        assert repository.connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
+    assert [tuple(row) for row in repository.connection.execute("SELECT * FROM entity")] == [
+        (1, "User", "User", "user")
+    ]
+    assert repository.connection.execute("SELECT version FROM schema_version").fetchone()[0] == 1
+    assert repository.delete_epoch() == 1
+    assert repository.add_entity("User") == 1
+    repository.add_relation(1, "likes", value="tea")
+    assert len(repository.list_relations()) == 1
+
+
+def test_every_delete_advances_epoch_even_if_already_absent(repository, tmp_path):
+    assert not repository.delete_relation(999)
+    repository.delete_everything()
+    repository.delete_everything()
+    assert repository.delete_epoch() == 3
+    second = Repository(tmp_path / "data")
+    try:
+        assert second.delete_epoch() == 3
+        second.delete_relation(999)
+        assert repository.delete_epoch() == 4
+    finally:
+        second.close()
+
+
+@pytest.mark.parametrize("delete_all", [False, True])
+def test_failed_delete_rolls_back_fact_turn_entity_alias_and_epoch(repository, delete_all):
+    topic = repository.add_entity("Topic", "SQL")
+    repository.add_alias("databases", topic)
+    fact = repository.add_relation(1, "studies", object_id=topic)
+    repository.add_turn("session", "user", "I study SQL.")
+    repository.connection.execute(
+        "CREATE TRIGGER reject_alias_delete BEFORE DELETE ON alias "
+        "BEGIN SELECT RAISE(ABORT, 'failed delete'); END"
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="failed delete"):
+        if delete_all:
+            repository.delete_everything()
+        else:
+            repository.delete_relation(fact)
+    assert len(repository.list_relations()) == 1
+    assert len(repository.pending_turns()) == 1
+    assert repository.add_entity("Topic", "SQL") == topic
+    assert repository.connection.execute("SELECT count(*) FROM alias").fetchone()[0] == 1
+    assert repository.delete_epoch() == 0
+
+
+def test_turns_keep_spoken_text_and_pending_users_are_oldest_first(repository):
+    newer = repository.add_turn(
+        "new", "user", "  spoken text  ", created_at="2026-11-07T00:00:00+00:00"
+    )
+    older = repository.add_turn(
+        "old", "user", "earlier", crisis=True, created_at="2026-11-06T00:00:00+00:00"
+    )
+    repository.add_turn("new", "ames", "context only")
+    turns = repository.pending_turns()
+    assert [row["id"] for row in turns] == [older, newer]
+    assert turns[0]["crisis"] == 1
+    assert turns[1]["text"] == "  spoken text  "
+    repository.mark_extracted(older)
+    assert [row["id"] for row in repository.pending_turns()] == [newer]
+
+
+@pytest.mark.parametrize(
+    "kwargs", [{"session_id": ""}, {"text": " "}, {"crisis": "yes"}, {"crisis": 2}]
+)
+def test_invalid_turns_are_not_stored(repository, kwargs):
+    turn = {"session_id": "session", "role": "user", "text": "hello"} | kwargs
+    with pytest.raises(ValueError):
+        repository.add_turn(**turn)
+    assert repository.pending_turns() == []
+
+
+def test_retention_needs_both_extraction_and_session_end(repository):
+    active = repository.add_turn("active", "user", "current session")
+    ended = repository.add_turn("ended", "user", "previous session")
+    unprocessed = repository.add_turn("ended", "user", "still awaiting extraction")
+    reply = repository.add_turn("ended", "ames", "context")
+    repository.mark_extracted(active)
+    repository.mark_extracted(ended)
+    repository.mark_extracted(reply)
+    assert repository.prune_turns("active") == 2
+    rows = repository.connection.execute("SELECT id FROM turn ORDER BY id").fetchall()
+    assert [row[0] for row in rows] == [active, unprocessed]
+
+    assert repository.prune_turns(None) == 1
+    assert [row["id"] for row in repository.pending_turns()] == [unprocessed]
+    repository.mark_extracted(unprocessed)
+    assert repository.prune_turns(None) == 1
+    assert repository.connection.execute("SELECT * FROM turn").fetchall() == []
+    assert repository.delete_epoch() == 0
+
+
+def test_retention_after_restart_and_repeated_marking(tmp_path):
+    first = Repository(tmp_path)
+    processed = first.add_turn("ended", "user", "extracted before shutdown")
+    pending = first.add_turn("ended", "user", "not extracted before shutdown")
+    first.mark_extracted(processed)
+    stamp = first.connection.execute(
+        "SELECT extracted_at FROM turn WHERE id = ?", (processed,)
+    ).fetchone()[0]
+    first.mark_extracted(processed)
+    assert (
+        first.connection.execute(
+            "SELECT extracted_at FROM turn WHERE id = ?", (processed,)
+        ).fetchone()[0]
+        == stamp
+    )
+    first.close()
+    second = Repository(tmp_path)
+    try:
+        assert second.prune_turns(None) == 1
+        assert [row["id"] for row in second.pending_turns()] == [pending]
+        second.mark_extracted(pending)
+        assert second.prune_turns(None) == 1
+    finally:
+        second.close()

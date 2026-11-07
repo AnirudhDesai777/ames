@@ -167,3 +167,64 @@ class Repository:
 
     def delete_epoch(self) -> int:
         return self.connection.execute("SELECT n FROM delete_epoch").fetchone()[0]
+
+    def delete_relation(self, relation_id: int) -> bool:
+        with self.connection:
+            deleted = self.connection.execute(
+                "DELETE FROM relation WHERE id = ?", (relation_id,)
+            ).rowcount
+            self.connection.execute(
+                "DELETE FROM entity WHERE id <> 1 AND NOT EXISTS "
+                "(SELECT 1 FROM relation WHERE subject_id = entity.id OR object_id = entity.id)"
+            )
+            self.connection.execute("UPDATE delete_epoch SET n = n + 1")
+        return bool(deleted)
+
+    def delete_everything(self) -> None:
+        with self.connection:
+            self.connection.execute("DELETE FROM turn")
+            self.connection.execute("DELETE FROM relation")
+            self.connection.execute("DELETE FROM alias")
+            self.connection.execute("DELETE FROM entity WHERE id <> 1")
+            self.connection.execute("UPDATE delete_epoch SET n = n + 1")
+
+    def add_turn(
+        self,
+        session_id: str,
+        role: str,
+        text: str,
+        *,
+        crisis: bool = False,
+        created_at: str | None = None,
+    ) -> int:
+        nonempty(session_id)
+        nonempty(text)
+        if crisis not in (False, True):
+            raise ValueError("Crisis must be a boolean")
+        with self.connection:
+            return self.connection.execute(
+                "INSERT INTO turn(session_id, role, text, crisis, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (session_id, role, text, crisis, created_at or now()),
+            ).lastrowid
+
+    def pending_turns(self) -> list[sqlite3.Row]:
+        return self.connection.execute(
+            "SELECT * FROM turn WHERE role = 'user' AND extracted_at IS NULL "
+            "ORDER BY created_at, id"
+        ).fetchall()
+
+    def mark_extracted(self, turn_id: int) -> None:
+        with self.connection:
+            self.connection.execute(
+                "UPDATE turn SET extracted_at = ? WHERE id = ? AND extracted_at IS NULL",
+                (now(), turn_id),
+            )
+
+    def prune_turns(self, active_session_id: str | None) -> int:
+        """Drop processed text outside the one active session (None means no session)."""
+        with self.connection:
+            return self.connection.execute(
+                "DELETE FROM turn WHERE extracted_at IS NOT NULL AND session_id IS NOT ?",
+                (active_session_id,),
+            ).rowcount
