@@ -1,6 +1,10 @@
 # Ames roadmap after v1
 
-Nothing here is built until v1 ships (issue #10 closed). Each item has a backlog issue.
+Nothing here is built until v1 ships (launch checklist #10 complete). Each item has a backlog issue.
+
+## v1.x
+
+Small follow-ups deferred from v1: a Settings panel, Firefox and Safari support, voice "forget that", and encryption at rest for the memory database.
 
 ## v1.1
 
@@ -12,12 +16,11 @@ Docker Compose for Linux and Windows (WSL2) machines with an NVIDIA GPU. Docker 
 
 Opt-in, off by default, with a visible indicator whenever she searches. Turning it on breaks the "nothing leaves your machine" promise for search queries, and the UI must say so. Needs tool calling from the chosen LLM and a search backend.
 
-## Fine-tuning (#7)
+## Preference tuning (#7)
 
-1. Distillation (only if the bake-off in #12 finds no small model that passes): a large teacher model writes in-persona replies; the small student is fine-tuned on them with an `mlx-lm` LoRA.
-2. Preference tuning: opt-in thumbs up or down in the UI produces local preference pairs for DPO. No data leaves the machine.
+Opt-in thumbs up or down in the UI produces local preference pairs for DPO with an `mlx-lm` LoRA. No data leaves the machine. Persona eval prompts are held out of all training data.
 
-Persona eval prompts are held out of all training data.
+Distillation is not here: it is slice D in the v1 design and runs before v1 ships if the bake-off finds no passing model.
 
 ## v2: full duplex (#8)
 
