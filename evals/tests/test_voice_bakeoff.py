@@ -55,9 +55,7 @@ def test_summary_uses_p90_and_corpus_wer_instead_of_mean_wer():
     assert bakeoff.summarize(samples, "stt", 24 * 1024**3)["within_budgets"]
 
 
-@pytest.mark.parametrize(
-    "latency,rtf,rss", [(401, 0.1, 1), (1, 0.91, 1), (1, 0.1, 24 * 1024**3 + 1)]
-)
+@pytest.mark.parametrize("latency,rtf,rss", [(401, 0.1, 1), (1, 0.91, 1)])
 def test_tts_budget_failures(latency, rtf, rss):
     result = bakeoff.summarize(
         [{"latency_ms": latency, "rtf": rtf, "underruns": 2}],
@@ -84,10 +82,13 @@ def test_three_warm_passes_reuse_all_recordings_without_exposing_gold_to_stt(mon
     assert {row["repeat"] for row in result["samples"]} == {1, 2, 3}
     assert result["summary"]["wer"] > 0
     assert result["summary"]["peak_rss_bytes"] > 0
+    assert result["summary"]["peak_mlx_bytes"] is None
+    assert "within_budgets" in result and "within_budgets" not in result["summary"]
 
 
 def test_tts_measures_twenty_fixed_sentences_and_saves_only_first_pass(monkeypatch, tmp_path):
     (tmp_path / "clips").mkdir()
+    (tmp_path / "source-clips").mkdir()
     calls = []
 
     class Voice(bakeoff.StubVoice):
@@ -103,7 +104,7 @@ def test_tts_measures_twenty_fixed_sentences_and_saves_only_first_pass(monkeypat
     assert {style for style, text in calls} == {"sassy", "angry", "sad", "deadpan", "tagged"}
     for clip in result["clips"]:
         assert "kokoro" not in clip["file"]
-        with wave.open(str(tmp_path / "clips" / clip["file"]), "rb") as wav:
+        with wave.open(str(tmp_path / "source-clips" / clip["file"]), "rb") as wav:
             assert wav.getnframes() > 0
             assert wav.getnchannels() == 1
     bakeoff.listening_files(tmp_path, [result])
@@ -120,6 +121,8 @@ def test_tts_measures_twenty_fixed_sentences_and_saves_only_first_pass(monkeypat
     [
         (MemoryError("allocation failed"), "oom"),
         (RuntimeError("Metal out of memory"), "oom"),
+        (RuntimeError("[metal::malloc] Unable to allocate 4096 bytes"), "oom"),
+        (RuntimeError("Insufficient Memory"), "oom"),
         (RuntimeError("unsupported model"), "error"),
     ],
 )
@@ -173,6 +176,7 @@ def test_process_kill_is_a_missed_budget_without_claiming_oom(monkeypatch, tmp_p
         "candidate": "whisper",
         "status": "killed",
         "returncode": -9,
+        "log": "whisper.log",
         "within_budgets": False,
     }
 
@@ -200,13 +204,12 @@ def test_parent_continues_after_oom_and_timeout_and_preserves_existing_output(
     assert (output / "results.json").read_text() == report
 
 
-def test_config_requires_local_paths_pins_and_common_quantization(tmp_path):
+def test_config_requires_local_paths_pins_and_records_source_quantization(tmp_path):
     entry = {"path": str(tmp_path), "revision": "local-pin", "quantization": "4bit"}
     config = {"llm": dict(entry), "candidates": {key: dict(entry) for key in bakeoff.CANDIDATES}}
     assert bakeoff.validate_config(config) == config
     config["candidates"]["kokoro"]["quantization"] = "bf16"
-    with pytest.raises(ValueError, match="same quantization"):
-        bakeoff.validate_config(config)
+    assert bakeoff.validate_config(config) == config
     config["candidates"]["kokoro"]["path"] = str(tmp_path / "missing")
     with pytest.raises(ValueError, match="directory missing"):
         bakeoff.validate_config(config)
@@ -259,7 +262,8 @@ def test_local_adapter_uses_local_loader_materializes_audio_and_passes_options(
                 return SimpleNamespace(text="hello")
             return iter([SimpleNamespace(audio=np.array([0.5, -0.5]), sample_rate=16000)])
 
-    def load(path):
+    def load(path, *, model_type):
+        assert model_type == "whisper" if role == "stt" else model_type == "kokoro"
         assert path == str(tmp_path)
         return Model()
 
@@ -275,6 +279,7 @@ def test_local_adapter_uses_local_loader_materializes_audio_and_passes_options(
         role,
         {
             "path": str(tmp_path),
+            "model_type": "whisper" if role == "stt" else "kokoro",
             "options": {"language": "en"} if role == "stt" else {"stream": True, "voice": "test"},
             "instructions": {"sad": "Speak quietly."},
         },
@@ -301,3 +306,121 @@ def test_local_adapter_uses_local_loader_materializes_audio_and_passes_options(
 def test_malformed_config_is_rejected(config):
     with pytest.raises(ValueError):
         bakeoff.validate_config(config)
+
+
+def test_summary_records_both_memory_peaks_without_claiming_system_fit():
+    result = bakeoff.summarize(
+        [{"latency_ms": 1, "rtf": 0.1, "underruns": 0}],
+        "tts",
+        30 * 1024**3,
+        31 * 1024**3,
+    )
+    assert result["within_budgets"]
+    assert result["peak_mlx_bytes"] == 31 * 1024**3
+    assert "memory" not in result["budgets"]
+
+
+def test_wer_rejects_empty_reference_corpus():
+    with pytest.raises(ValueError, match="reference word"):
+        bakeoff.summarize([{"latency_ms": 1, "rtf": 1, "errors": 1, "words": 0}], "stt", 1)
+
+
+@pytest.mark.parametrize("missing", ["llm", "kokoro"])
+def test_missing_config_key_has_actionable_diagnosis(tmp_path, missing):
+    entry = {"path": str(tmp_path), "revision": "pin", "quantization": "bf16"}
+    config = {"llm": entry, "candidates": dict.fromkeys(bakeoff.CANDIDATES, entry)}
+    del (config if missing == "llm" else config["candidates"])[missing]
+    with pytest.raises(ValueError, match=missing):
+        bakeoff.validate_config(config)
+
+
+@pytest.mark.parametrize("returncode", [1, -9])
+def test_worker_logs_diagnostics_and_resolves_paths_before_changing_cwd(
+    monkeypatch, tmp_path, returncode
+):
+    monkeypatch.chdir(tmp_path)
+
+    def run(command, **kwargs):
+        assert kwargs["cwd"] == bakeoff.ROOT
+        assert command[-1] == str(tmp_path / "config.json")
+        assert kwargs["stderr"] == subprocess.STDOUT
+        kwargs["stdout"].write("loader failed: missing processor")
+        return SimpleNamespace(returncode=returncode)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    result = bakeoff.run_candidate("whisper", tmp_path, bakeoff.Path("config.json"), False)
+    assert result["log"] == "whisper.log"
+    assert (tmp_path / result["log"]).read_text() == "loader failed: missing processor"
+
+
+def test_worker_runs_from_an_unrelated_directory(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    result = bakeoff.run_candidate("whisper", tmp_path, None, True)
+    assert result["status"] == "ok"
+
+
+def test_worker_keeps_diagnostics_on_timeout(monkeypatch, tmp_path):
+    def run(command, **kwargs):
+        assert kwargs["env"]["PYTHONUNBUFFERED"] == "1"
+        kwargs["stdout"].write("load reached tokenizer")
+        raise subprocess.TimeoutExpired(command, 3600)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(subprocess.TimeoutExpired):
+        bakeoff.run_candidate("whisper", tmp_path, None, True)
+    assert (tmp_path / "whisper.log").read_text() == "load reached tokenizer"
+
+
+def test_config_rejects_invalid_model_type(tmp_path):
+    entry = {"path": str(tmp_path), "revision": "pin", "quantization": "bf16", "model_type": 9}
+    config = {"llm": entry, "candidates": dict.fromkeys(bakeoff.CANDIDATES, entry)}
+    with pytest.raises(ValueError, match="Model type"):
+        bakeoff.validate_config(config)
+
+
+def test_blind_files_hide_rate_and_time_and_follow_shuffled_order(monkeypatch, tmp_path):
+    (tmp_path / "source-clips").mkdir()
+    (tmp_path / "clips").mkdir()
+    clips = []
+    for index, rate in enumerate([16000, 48000]):
+        name = f"random-{index}.wav"
+        with wave.open(str(tmp_path / "source-clips" / name), "wb") as wav:
+            wav.setparams((1, 2, rate, 0, "NONE", "not compressed"))
+            wav.writeframes(b"12" * rate)
+        clips.append({"file": name, "style": "sad", "candidate": str(index)})
+    monkeypatch.setattr(bakeoff.random.SystemRandom, "shuffle", lambda self, rows: rows.reverse())
+    bakeoff.listening_files(tmp_path, [{"status": "ok", "clips": clips}])
+    with (tmp_path / "listening.csv").open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert [row["file"] for row in rows] == ["random-1.wav", "random-0.wav"]
+    assert all(row["style"] == "sad" for row in rows)
+    assert len({path.stat().st_mtime_ns for path in (tmp_path / "clips").iterdir()}) == 1
+    for row in rows:
+        with wave.open(str(tmp_path / "clips" / row["file"]), "rb") as wav:
+            assert wav.getframerate() == 48000
+            assert abs(wav.getnframes() - 48000) <= 3
+
+
+def test_real_benchmark_records_mlx_allocator_peak(monkeypatch, tmp_path):
+    class LLM:
+        def __init__(self, path):
+            pass
+
+        async def tokens(self, messages):
+            yield "hello"
+
+        async def close(self):
+            pass
+
+    voice = bakeoff.StubVoice()
+    voice.mx = SimpleNamespace(get_peak_memory=lambda: 123456)
+    monkeypatch.setattr(bakeoff, "MLXLanguageModel", LLM)
+    monkeypatch.setattr(bakeoff, "LocalVoice", lambda *args: voice)
+    monkeypatch.setattr(bakeoff, "configure_models", lambda: None)
+    result = bakeoff.benchmark(
+        "whisper",
+        {"llm": {"path": str(tmp_path)}, "candidates": {"whisper": {}}},
+        tmp_path,
+        False,
+    )
+    assert result["summary"]["peak_mlx_bytes"] == 123456

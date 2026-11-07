@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import audioop
 import csv
 import importlib.metadata
 import json
@@ -13,6 +14,7 @@ import resource
 import subprocess
 import sys
 import time
+import traceback
 import uuid
 import wave
 from pathlib import Path
@@ -107,7 +109,7 @@ def tts_sample(chunks, clock=time.perf_counter):
     )
 
 
-def summarize(samples, role, peak_rss_bytes):
+def summarize(samples, role, peak_rss_bytes, peak_mlx_bytes=None):
     latencies = [sample["latency_ms"] for sample in samples]
     rtfs = [sample["rtf"] for sample in samples]
     summary = {
@@ -117,13 +119,16 @@ def summarize(samples, role, peak_rss_bytes):
         "rtf_p50": percentile(rtfs, 0.5),
         "rtf_p90": percentile(rtfs, 0.9),
         "peak_rss_bytes": peak_rss_bytes,
+        "peak_mlx_bytes": peak_mlx_bytes,
     }
     summary["budgets"] = {
         "latency": summary["latency_p90_ms"] <= (200 if role == "stt" else 400),
-        "memory": peak_rss_bytes <= 24 * 1024**3,
     }
     if role == "stt":
-        summary["wer"] = sum(s["errors"] for s in samples) / sum(s["words"] for s in samples)
+        words = sum(s["words"] for s in samples)
+        if not words:
+            raise ValueError("WER requires at least one reference word")
+        summary["wer"] = sum(s["errors"] for s in samples) / words
     else:
         summary["underruns"] = sum(s["underruns"] for s in samples)
         summary["budgets"]["rtf"] = summary["rtf_p90"] <= 0.9
@@ -150,7 +155,9 @@ class LocalVoice:
 
         self.mx = mx
         self.entry = entry
-        self.model = load_model(str(Path(entry["path"]).expanduser()))
+        self.model = load_model(
+            str(Path(entry["path"]).expanduser()), model_type=entry.get("model_type")
+        )
         mx.eval(self.model.parameters())
         mx.synchronize()
 
@@ -179,8 +186,15 @@ class LocalVoice:
 
 
 def validate_config(config):
-    if not isinstance(config, dict) or not isinstance(config.get("candidates"), dict):
+    if (
+        not isinstance(config, dict)
+        or not isinstance(config.get("llm"), dict)
+        or not isinstance(config.get("candidates"), dict)
+    ):
         raise ValueError("Config requires llm and candidates objects")
+    missing = CANDIDATES.keys() - config["candidates"].keys()
+    if missing:
+        raise ValueError(f"Config missing candidates: {', '.join(sorted(missing))}")
     entries = [config["llm"], *(config["candidates"][key] for key in CANDIDATES)]
     for entry in entries:
         if not isinstance(entry, dict):
@@ -194,8 +208,8 @@ def validate_config(config):
             raise ValueError(f"Local model directory missing: {entry['path']}")
         if any(not isinstance(entry.get(key, {}), dict) for key in ("options", "instructions")):
             raise ValueError("Model options and instructions must be objects")
-    if len({entry["quantization"] for entry in entries[1:]}) != 1:
-        raise ValueError("Voice candidates must use the same quantization tier")
+        if "model_type" in entry and not isinstance(entry["model_type"], str):
+            raise ValueError("Model type must be a string")
     return config
 
 
@@ -249,7 +263,7 @@ def benchmark(key, config, output, stub):
                         samples.append(sample | {"id": index, "repeat": repeat + 1})
                     if repeat == 0:
                         name = uuid.uuid4().hex + ".wav"
-                        with wave.open(str(output / "clips" / name), "wb") as wav:
+                        with wave.open(str(output / "source-clips" / name), "wb") as wav:
                             wav.setparams((1, 2, rate, 0, "NONE", "not compressed"))
                             wav.writeframes(pcm)
                         clips.append(
@@ -268,13 +282,15 @@ def benchmark(key, config, output, stub):
                         )
         peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         peak *= 1 if sys.platform == "darwin" else 1024
+        summary = summarize(samples, role, peak, None if stub else voice.mx.get_peak_memory())
         return {
             "candidate": key,
             "repo": repo,
             "role": role,
             "status": "ok",
             "cold_load_s": cold_load,
-            "summary": summarize(samples, role, peak),
+            "within_budgets": summary.pop("within_budgets"),
+            "summary": summary,
             "samples": samples,
             "clips": clips,
         }
@@ -290,43 +306,61 @@ def write_json(path, value):
 
 
 def run_candidate(key, output, config_path, stub):
+    output = output.resolve()
     command = [sys.executable, "-m", "evals.voice_bakeoff", "--out", str(output), "--worker", key]
     if config_path:
-        command.extend(["--config", str(config_path)])
-    result = subprocess.run(
-        command,
-        env={**os.environ, "AMES_STUB": "1" if stub else "0"},
-        capture_output=True,
-        text=True,
-        timeout=3600,
-    )
+        command.extend(["--config", str(config_path.resolve())])
+    with (output / f"{key}.log").open("w") as log:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            env={**os.environ, "AMES_STUB": "1" if stub else "0", "PYTHONUNBUFFERED": "1"},
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=3600,
+        )
     if result.returncode:
         # A SIGKILL may be the OS memory killer; do not claim its cause is known.
         return {
             "candidate": key,
             "status": "killed" if result.returncode < 0 else "error",
             "returncode": result.returncode,
+            "log": f"{key}.log",
             "within_budgets": False,
         }
-    return json.loads((output / f"{key}.json").read_text())
+    return json.loads((output / f"{key}.json").read_text()) | {"log": f"{key}.log"}
 
 
 def listening_files(output, results):
     clips = [clip for result in results if result["status"] == "ok" for clip in result["clips"]]
     random.SystemRandom().shuffle(clips)
+    timestamp = time.time()
+    for clip in clips:
+        with wave.open(str(output / "source-clips" / clip["file"]), "rb") as wav:
+            rate = wav.getframerate()
+            pcm = wav.readframes(wav.getnframes())
+        if rate != 48000:
+            pcm = audioop.ratecv(pcm, 2, 1, rate, 48000, None)[0]
+        path = output / "clips" / clip["file"]
+        with wave.open(str(path), "wb") as wav:
+            wav.setparams((1, 2, 48000, 0, "NONE", "not compressed"))
+            wav.writeframes(pcm)
+        os.utime(path, (timestamp, timestamp))
     write_json(output / "reveal-key.json", clips)
     with (output / "listening.csv").open("w", newline="") as stream:
         writer = csv.writer(stream)
         writer.writerow(
             [
                 "file",
+                "style",
                 "expressiveness_1_to_5",
                 "naturalness_1_to_5",
                 "tag_or_instruction_rendered",
                 "notes",
             ]
         )
-        writer.writerows([clip["file"], "", "", "", ""] for clip in clips)
+        writer.writerows([clip["file"], clip["style"], "", "", "", ""] for clip in clips)
 
 
 def main():
@@ -348,7 +382,14 @@ def main():
             try:
                 result = benchmark(args.worker, config, args.out, stub)
             except Exception as error:
-                oom = isinstance(error, MemoryError) or "out of memory" in str(error).casefold()
+                traceback.print_exc()
+                message = str(error).casefold()
+                oom = (
+                    isinstance(error, MemoryError)
+                    or "out of memory" in message
+                    or "insufficient memory" in message
+                    or ("[metal::malloc]" in message and "allocate" in message)
+                )
                 result = {
                     "candidate": args.worker,
                     "status": "oom" if oom else "error",
@@ -359,6 +400,7 @@ def main():
             return
         args.out.mkdir(parents=True, exist_ok=False)
         (args.out / "clips").mkdir()
+        (args.out / "source-clips").mkdir()
         versions = {}
         for package in ("mlx", "mlx-lm", "mlx-audio"):
             try:
@@ -378,7 +420,12 @@ def main():
             try:
                 result = run_candidate(key, args.out.resolve(), args.config, stub)
             except subprocess.TimeoutExpired:
-                result = {"candidate": key, "status": "timeout", "within_budgets": False}
+                result = {
+                    "candidate": key,
+                    "status": "timeout",
+                    "log": f"{key}.log",
+                    "within_budgets": False,
+                }
             report["results"].append(result)
             write_json(args.out / "results.json", report)
             print(f"{key}: {result['status']}", flush=True)
