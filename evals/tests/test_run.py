@@ -31,7 +31,9 @@ def test_cli_runs_current_partial_data_with_stubs(name, split, tmp_path):
     )
     result = json.loads(output.read_text())
     assert result["set"] == name
+    assert result["split"] == split
     assert result["requested_split"] == split
+    assert f"split={split}" in completed.stdout
     assert result["backend"] == "stub"
     assert result["cases"]
     assert result["metrics"]["malformed"] == 0
@@ -49,8 +51,17 @@ def test_cli_runs_current_partial_data_with_stubs(name, split, tmp_path):
         assert result["metrics"]["recall"] == 0
         assert result["status"] == "FAIL"
     else:
-        assert result["split"] == "unsplit"
-        assert result["counts"]["questions"] == 40
+        ids = (
+            ["memory-001", "memory-002", "memory-003"]
+            if split == "dev"
+            else [
+                "memory-004",
+                "memory-005",
+            ]
+        )
+        assert [case["id"] for case in result["cases"]] == ids
+        assert result["counts"]["conversations"] == len(ids)
+        assert result["counts"]["questions"] == (24 if split == "dev" else 16)
 
 
 def test_prompt_is_verbatim_and_turns_use_model_roles():
@@ -160,11 +171,12 @@ def test_memory_pools_fact_counts_and_answers_using_only_extracted_memory():
     rows = [
         {
             "id": "m1",
+            "split": "dev",
             "sessions": [session, session],
             "gold_facts": [fact, other],
             "questions": [{"q": "What do I like?", "answer": "secret reference"}],
         },
-        {"id": "m2", "sessions": [session], "gold_facts": [other], "questions": []},
+        {"id": "m2", "split": "dev", "sessions": [session], "gold_facts": [other], "questions": []},
     ]
     calls = []
     extracted = iter([[fact, fact, wrong], [fact], [other]])
@@ -211,7 +223,7 @@ def test_invalid_judge_output_is_an_error(answer):
 
 @pytest.mark.parametrize("answer", ["not json", "{}", '[{"subject":"user"}]'])
 def test_invalid_extraction_is_an_error(answer):
-    row = {"id": "m1", "sessions": [[]], "gold_facts": [], "questions": []}
+    row = {"id": "m1", "split": "dev", "sessions": [[]], "gold_facts": [], "questions": []}
     with pytest.raises(ValueError):
         evaluate("memory", [row], extractor=lambda messages: answer)
 
