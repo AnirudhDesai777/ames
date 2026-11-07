@@ -7,6 +7,7 @@ from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.transport import SmallWebRTCTransport
 from pipecat.workers.runner import WorkerRunner
 
+from server.events import Events
 from server.stubs import model_stages
 
 
@@ -37,5 +38,8 @@ async def run_echo(connection: SmallWebRTCConnection):
 
         await runner.add_workers(worker)
         await runner.run()
+    except Exception:
+        Events(connection).notice("server_error", "The audio echo stopped.")
+        raise
     finally:
         await connection.disconnect()

@@ -135,7 +135,9 @@ async def test_invalid_sdp_closes_new_connection(client, monkeypatch):
     connection.disconnect = AsyncMock()
     monkeypatch.setattr(app_module, "echo_connection", lambda: connection)
     response = await client.post(
-        "/api/offer", headers=headers(client), json={"type": "offer", "sdp": "invalid"}
+        "/api/offer",
+        headers=headers(client),
+        json={"type": "offer", "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"},
     )
     assert response.status == 400
     assert "private SDP" not in await response.text()
@@ -211,6 +213,11 @@ async def test_real_offer_rtvi_and_session_replaced(client, monkeypatch):
             message["label"] == "rtvi-ai" and message["type"] == "server-message"
             for message in received
         )
+        invalid = await client.post(
+            "/api/offer", headers=headers(client), json={"type": "offer", "sdp": "invalid"}
+        )
+        assert invalid.status == 400
+        assert connections[0].pc.connectionState == "connected"
         second = await connect()
         assert first["session_id"] != second["session_id"]
         notice = await asyncio.wait_for(messages.get(), 10)
@@ -221,3 +228,35 @@ async def test_real_offer_rtvi_and_session_replaced(client, monkeypatch):
         await client.close()
         await asyncio.gather(*(peer.close() for peer in peers))
     assert all(connection.pc.connectionState == "closed" for connection in connections)
+
+
+def test_startup_opens_chrome_with_token_only_in_fragment(tmp_path, monkeypatch):
+    monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
+    token = write_token(tmp_path)
+    browser = Mock()
+    monkeypatch.setattr(app_module.webbrowser, "get", Mock(return_value=browser))
+    monkeypatch.setattr(app_module.os, "umask", Mock())
+    monkeypatch.setattr(app_module.logger, "remove", Mock())
+    monkeypatch.setattr(app_module.logger, "add", Mock())
+
+    def serve(app, **kwargs):
+        assert kwargs["host"] == "127.0.0.1"
+        assert kwargs["port"] == 8765
+        assert kwargs["access_log"] is None
+        kwargs["print"]("Listening")
+
+    monkeypatch.setattr(app_module.web, "run_app", serve)
+    app_module.main()
+    app_module.os.umask.assert_called_once_with(0o077)
+    browser.open.assert_called_once_with(f"http://127.0.0.1:8765/#t={token}")
+
+
+def test_port_in_use_reports_port_without_opening_browser(monkeypatch):
+    monkeypatch.setattr(app_module.web, "run_app", Mock(side_effect=OSError("Address in use")))
+    monkeypatch.setattr(app_module.webbrowser, "get", Mock())
+    monkeypatch.setattr(app_module.os, "umask", Mock())
+    monkeypatch.setattr(app_module.logger, "remove", Mock())
+    monkeypatch.setattr(app_module.logger, "add", Mock())
+    with pytest.raises(SystemExit, match="port 8765 is in use"):
+        app_module.main()
+    app_module.webbrowser.get.assert_not_called()

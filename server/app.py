@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from aiohttp import web
+from aiortc.sdp import SessionDescription
 from loguru import logger
 
 from server.echo import echo_connection, run_echo
@@ -49,9 +50,6 @@ class Session:
             await run_echo(self.connection)
         except Exception:
             logger.error("echo_failed")
-            self.events.notice("server_error", "The audio echo stopped.")
-        finally:
-            await self.connection.disconnect()
 
     async def close(self, code: str, text: str):
         if self.connection.pc.connectionState != "closed":
@@ -124,6 +122,12 @@ def create_app(data_dir: Path = DATA_DIR, web_root: Path = WEB_ROOT) -> web.Appl
             or not body["sdp"].strip()
         ):
             raise web.HTTPBadRequest(text="Expected an SDP offer")
+        try:
+            description = SessionDescription.parse(body["sdp"])
+            if description.version != 0 or not description.media:
+                raise ValueError("No SDP media")
+        except (ValueError, AssertionError, IndexError, KeyError):
+            raise web.HTTPBadRequest(text="Invalid SDP offer") from None
         async with lock:
             session = Session(echo_connection())
             try:
