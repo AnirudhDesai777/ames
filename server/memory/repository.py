@@ -225,6 +225,10 @@ class Repository:
         """Drop processed text outside the one active session (None means no session)."""
         with self.connection:
             return self.connection.execute(
-                "DELETE FROM turn WHERE extracted_at IS NOT NULL AND session_id IS NOT ?",
+                "DELETE FROM turn WHERE session_id IS NOT ? AND ("
+                "(role = 'user' AND extracted_at IS NOT NULL) OR "
+                "(role = 'ames' AND NOT EXISTS ("
+                "SELECT 1 FROM turn AS pending WHERE pending.session_id = turn.session_id "
+                "AND pending.role = 'user' AND pending.extracted_at IS NULL)))",
                 (active_session_id,),
             ).rowcount

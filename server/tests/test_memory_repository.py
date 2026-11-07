@@ -337,20 +337,22 @@ def test_invalid_turns_are_not_stored(repository, kwargs):
 
 def test_retention_needs_both_extraction_and_session_end(repository):
     active = repository.add_turn("active", "user", "current session")
+    active_reply = repository.add_turn("active", "ames", "current context")
     ended = repository.add_turn("ended", "user", "previous session")
-    unprocessed = repository.add_turn("ended", "user", "still awaiting extraction")
     reply = repository.add_turn("ended", "ames", "context")
+    unprocessed = repository.add_turn("ended", "user", "still awaiting extraction")
     repository.mark_extracted(active)
     repository.mark_extracted(ended)
-    repository.mark_extracted(reply)
-    assert repository.prune_turns("active") == 2
+    assert repository.prune_turns("active") == 1
     rows = repository.connection.execute("SELECT id FROM turn ORDER BY id").fetchall()
-    assert [row[0] for row in rows] == [active, unprocessed]
+    assert [row[0] for row in rows] == [active, active_reply, reply, unprocessed]
 
-    assert repository.prune_turns(None) == 1
+    assert repository.prune_turns(None) == 2
+    rows = repository.connection.execute("SELECT id FROM turn ORDER BY id").fetchall()
+    assert [row[0] for row in rows] == [reply, unprocessed]
     assert [row["id"] for row in repository.pending_turns()] == [unprocessed]
     repository.mark_extracted(unprocessed)
-    assert repository.prune_turns(None) == 1
+    assert repository.prune_turns(None) == 2
     assert repository.connection.execute("SELECT * FROM turn").fetchall() == []
     assert repository.delete_epoch() == 0
 
