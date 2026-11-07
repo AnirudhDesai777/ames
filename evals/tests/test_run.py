@@ -57,11 +57,15 @@ def test_cli_runs_current_partial_data_with_stubs(name, split, tmp_path):
             else [
                 "memory-004",
                 "memory-005",
+                "memory-006",
+                "memory-007",
+                "memory-008",
+                "memory-009",
             ]
         )
         assert [case["id"] for case in result["cases"]] == ids
         assert result["counts"]["conversations"] == len(ids)
-        assert result["counts"]["questions"] == (24 if split == "dev" else 16)
+        assert result["counts"]["questions"] == (24 if split == "dev" else 48)
 
 
 def test_prompt_is_verbatim_and_turns_use_model_roles():
