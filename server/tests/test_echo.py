@@ -75,6 +75,8 @@ async def test_server_ice_servers_are_empty():
     connection = echo_connection()
     try:
         assert connection.ice_servers == []
+        # aiortc has no public configuration getter; None enables its default STUN server.
+        assert vars(connection.pc)["_RTCPeerConnection__configuration"].iceServers == []
     finally:
         await connection.disconnect()
 

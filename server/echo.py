@@ -1,4 +1,4 @@
-"""SmallWebRTC audio echo; HTTP signaling is added in S1b."""
+"""SmallWebRTC audio echo with no external ICE servers."""
 
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -29,7 +29,7 @@ async def run_echo(connection: SmallWebRTCConnection):
             params=PipelineParams(audio_in_sample_rate=16000, audio_out_sample_rate=16000),
             enable_rtvi=False,
         )
-        runner = WorkerRunner(handle_sigint=False)
+        runner = WorkerRunner(handle_sigint=False, handle_sigterm=False)
 
         @transport.event_handler("on_client_disconnected")
         async def on_client_disconnected(transport, client):
