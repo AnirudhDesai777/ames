@@ -65,6 +65,21 @@ def test_entities_and_aliases_are_normalized_without_merging_types(repository):
     assert [tuple(row) for row in aliases] == [("databases", topic), ("databases", other)]
 
 
+def test_composed_writes_roll_back_together(repository):
+    with pytest.raises(RuntimeError, match="stop batch"), repository.connection:
+        topic = repository.add_entity_in_transaction("Topic", "SQLite")
+        repository.add_alias_in_transaction("storage", topic)
+        repository.add_relation_in_transaction(1, "studies", object_id=topic)
+        turn = repository.add_turn_in_transaction("session", "user", "I study SQLite.")
+        repository.mark_extracted_in_transaction(turn)
+        raise RuntimeError("stop batch")
+
+    for table in ("turn", "relation", "alias"):
+        assert repository.connection.execute(f"SELECT * FROM {table}").fetchall() == []
+    assert [row[0] for row in repository.connection.execute("SELECT id FROM entity")] == [1]
+    assert repository.delete_epoch() == 0
+
+
 @pytest.mark.parametrize("text", ["", "  ", None, 42])
 def test_empty_names_aliases_and_values_are_rejected(repository, text):
     with pytest.raises(ValueError):
