@@ -44,7 +44,7 @@ uv run --locked python -m evals.run memory --split heldout --repeats 3 --out /tm
 uv run --locked pytest -q evals/tests
 ```
 
-The CLI always uses the fixed model, judge and extractor in `evals/stubs.py`. No model downloads, network, GPU, microphone or browser are needed. CI runs every set with both split selections at `--repeats 1` and prints each metric. Latency belongs to S2a and is not part of this command.
+The CLI always uses the fixed model, judge and extractor in `evals/stubs.py`. No model downloads, network, GPU, microphone or browser are needed. Evals run locally on the maintainer's Mac. CI covers the runner only through pytest in `evals/tests/test_run.py`. Latency belongs to S2a and is not part of this command.
 
 The command prints metrics and PASS or FAIL against the proposed thresholds in `evals/scoring.py`. The JSON file includes counts, metrics, gates and per-case scores, without conversation or reply text. Exit code 0 means the evaluation completed, even if a score gate failed; errors reading inputs, judging or writing results exit nonzero. Consumers that need a score gate must check the JSON `status`.
 
