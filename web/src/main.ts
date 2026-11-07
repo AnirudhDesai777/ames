@@ -1,5 +1,5 @@
 import { sessionToken } from "./auth";
-import { startEcho } from "./rtc";
+import { startSession } from "./rtc";
 
 const status = document.querySelector<HTMLParagraphElement>("#status");
 const connect = document.querySelector<HTMLButtonElement>("#connect");
@@ -15,7 +15,11 @@ connect.addEventListener("click", async () => {
   close?.();
   status.textContent = "Connecting...";
   try {
-    close = await startEcho(token, audio, (text) => { status.textContent = text; });
+    const session = startSession(token, audio,
+      (event) => { if (event.type === "notice") status.textContent = event.text; },
+      () => { status.textContent = "Connection lost. Connect again."; });
+    close = session.close;
+    await session.ready;
     status.textContent = "Audio echo connected (stub models).";
   } catch (error) {
     status.textContent = error instanceof Error ? error.message : "Could not connect.";
