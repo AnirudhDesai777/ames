@@ -21,10 +21,18 @@ jobs:
           version: "0.9.27"
           python-version: "3.12"
       - run: uv sync --locked
-      - run: uv run --locked ruff check server
-      - run: uv run --locked ruff format --check server
+      - run: uv run --locked ruff check server evals --exclude evals/check.py
+      - run: uv run --locked ruff format --check server evals --exclude evals/check.py
       - run: uv run --locked pytest -q
       - run: uv run --locked python -m server.latency
+      - name: Run stub evals and print metrics
+        run: |
+          for eval_set in persona crisis guardrail memory; do
+            for split in dev heldout; do
+              uv run --locked python -m evals.run "$eval_set" --split "$split" \
+                --out "$RUNNER_TEMP/evals/$eval_set-$split.json"
+            done
+          done
 
   web:
     runs-on: ubuntu-latest
