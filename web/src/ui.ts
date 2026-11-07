@@ -43,6 +43,7 @@ export function mountConversation(
     orb.setAttribute("aria-label", `${presence.textContent}. Mood: ${mood}.`);
   };
   const finish = (text: string, button = "Start conversation") => {
+    const wasRunning = running;
     running = false;
     session?.close();
     session = undefined;
@@ -53,6 +54,7 @@ export function mountConversation(
     end.disabled = true;
     start.disabled = !token || !seen;
     start.textContent = button;
+    if (wasRunning) start.focus();
     status.textContent = text;
     who = "none";
     mood = "neutral";
@@ -126,6 +128,7 @@ export function mountConversation(
     moodTurn = -1;
     start.disabled = true;
     end.disabled = false;
+    end.focus();
     status.textContent = "Connecting...";
     renderOrb();
     try {

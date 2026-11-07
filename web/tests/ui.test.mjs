@@ -159,6 +159,29 @@ test("end closes locally, resets controls and preserves the transcript until a n
   assert.equal(ui.element("transcript-empty").hidden, false);
 });
 
+for (const control of ["end", "mute"]) {
+  test(`focus moves to End on connect and back to Start when finishing from ${control}`, async (t) => {
+    const ui = setup({ pending: true });
+    let focused;
+    for (const id of ["connect", "end", "mute"]) {
+      t.mock.method(ui.element(id), "focus", function () {
+        assert.equal(this.disabled, false);
+        focused = this;
+      });
+    }
+    ui.element("connect").focus();
+    ui.click("connect");
+    assert.equal(focused, ui.element("end"));
+    ui.sessions[0].resolve();
+    await tick();
+    assert.equal(focused, ui.element("end"));
+    ui.element(control).focus();
+    if (control === "end") ui.click("end");
+    else ui.receive({ type: "notice", code: "session_ended", text: "Session ended." });
+    assert.equal(focused, ui.element("connect"));
+  });
+}
+
 for (const code of ["session_replaced", "session_ended"]) {
   test(`${code} notice stays visible after disconnect and late setup completion`, async () => {
     const ui = setup({ pending: true });
