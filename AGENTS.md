@@ -19,6 +19,7 @@ Read this before searching. Paths marked (planned) do not exist yet; the first i
 |---|---|---|
 | `AGENTS.md` | These rules | Always, first |
 | `docs/design.md` | v1 design: pipeline, budgets, memory schema, persona, guardrails | Before any feature work |
+| `docs/roadmap.md` | Work after v1: NVIDIA, web search, fine-tuning, duplex, cloning | Never build from it without an issue |
 | `docs/reviews/` | EGM review reports on the design and on PRs | Before changing a design decision |
 | `docs/architecture/` (planned) | C4 diagrams (Mermaid) | Before changing how components connect |
 | `server/` (planned) | Python server: Pipecat pipeline, STT, LLM, TTS, memory, HTTP API | Backend issues |
