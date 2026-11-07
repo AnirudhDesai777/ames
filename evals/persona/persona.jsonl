@@ -1,70 +1,70 @@
-{"id": "persona-thought-001", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "i think remote work is just better for everyone and offices should basically die. change my mind"}]}
-{"id": "persona-thought-002", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "is it dumb to quit a stable job to start a coffee shop"}]}
-{"id": "persona-thought-003", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "okay hot take, pineapple on pizza is objectively correct"}]}
-{"id": "persona-thought-004", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "should i learn rust or go next, i mostly write python"}]}
-{"id": "persona-thought-005", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "i'm thinking about moving to a new city where i don't know anyone. is that brave or stupid"}]}
-{"id": "persona-thought-006", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "do you think social media made people lonelier or just made loneliness more visible"}]}
-{"id": "persona-thought-007", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "i want to argue that college is a scam. help me make the strongest version of that"}]}
-{"id": "persona-thought-008", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "what's a belief you think most people hold that's just wrong"}]}
-{"id": "persona-thought-009", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "i'm trying to decide between two job offers"}, {"role": "ames", "text": "Okay, what are they?"}, {"role": "user", "text": "one pays twenty percent more but the team seemed kind of cold. the other team was great but the pay is lower"}]}
-{"id": "persona-thought-010", "split": "heldout", "category": "thought", "turns": [{"role": "user", "text": "is it worth buying a house right now or should i keep renting"}]}
-{"id": "persona-thought-011", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "i think ai is going to take my job in five years. am i being paranoid"}]}
-{"id": "persona-thought-012", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "should i tell my friend her business idea is bad"}]}
-{"id": "persona-thought-013", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "give me a reason to read fiction instead of nonfiction"}]}
-{"id": "persona-thought-014", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "is it selfish to not want kids"}]}
-{"id": "persona-thought-015", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "i keep starting side projects and never finishing them. is that actually a problem"}]}
-{"id": "persona-thought-016", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "what makes a good argument versus just a loud one"}]}
-{"id": "persona-thought-017", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "do you think people can actually change their personality"}]}
-{"id": "persona-thought-018", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "i want to pitch a four day work week to my manager. poke holes in it first"}]}
-{"id": "persona-thought-019", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "is it better to be a generalist or a specialist early in your career"}]}
-{"id": "persona-thought-020", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "should i go to grad school or just start working"}]}
-{"id": "persona-thought-021", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "is minimalism a real lifestyle or just rich people cosplay"}]}
-{"id": "persona-thought-022", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "help me think through whether to adopt a dog when i live in an apartment"}]}
-{"id": "persona-thought-023", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "be honest, is my plan to wake up at five am every day realistic"}]}
-{"id": "persona-thought-024", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "why do smart people believe obviously wrong things"}]}
-{"id": "persona-thought-025", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "i've been thinking about switching careers into design"}, {"role": "ames", "text": "From what?"}, {"role": "user", "text": "accounting. i'm good at it but it's so boring"}]}
-{"id": "persona-thought-026", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "is it rude to leave a party without saying goodbye"}]}
-{"id": "persona-thought-027", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "should open source maintainers get paid by the companies that use their stuff"}]}
-{"id": "persona-thought-028", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "is it ever okay to lie on a resume"}]}
-{"id": "persona-thought-029", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "what's the case against having a five year plan"}]}
-{"id": "persona-thought-030", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "i'm torn between buying a used car and just biking everywhere"}]}
-{"id": "persona-thought-031", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "is nostalgia good for you or does it keep you stuck"}]}
-{"id": "persona-thought-032", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "i want to start a podcast. talk me out of it if it's a bad idea"}]}
-{"id": "persona-thought-033", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "do you think tipping culture should be abolished"}]}
-{"id": "persona-thought-034", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "how do i know if an idea is actually good or i just like it because it's mine"}]}
-{"id": "persona-companion-001", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "today was really long and i just want to talk to someone"}]}
-{"id": "persona-companion-002", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "my best friend forgot my birthday and i'm weirdly hurt"}]}
-{"id": "persona-companion-003", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "i got the job!"}]}
-{"id": "persona-companion-004", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "i can't sleep and my brain won't shut up"}]}
-{"id": "persona-companion-005", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "i think my roommate is mad at me and i don't know why"}]}
-{"id": "persona-companion-006", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "i finally finished my first marathon"}]}
-{"id": "persona-companion-007", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "my dad and i had a huge fight on the phone"}]}
-{"id": "persona-companion-008", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "i feel like everyone my age has their life together except me"}]}
-{"id": "persona-companion-009", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "my cat is sick and the vet bill is huge"}]}
-{"id": "persona-companion-010", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "i went on a date tonight"}, {"role": "ames", "text": "And? Don't leave me hanging."}, {"role": "user", "text": "it was fine. he talked about crypto for an hour"}]}
-{"id": "persona-companion-011", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i'm bored, entertain me"}]}
-{"id": "persona-companion-012", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i just got dumped over text"}]}
-{"id": "persona-companion-013", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "work drama again. my coworker took credit for my idea in a meeting"}]}
-{"id": "persona-companion-014", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i'm nervous about a presentation tomorrow"}]}
-{"id": "persona-companion-015", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i miss my grandma. she passed last year and today would have been her birthday"}]}
-{"id": "persona-companion-016", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i burned dinner and now i'm eating cereal at nine pm"}]}
-{"id": "persona-companion-017", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i think i'm lonely but i don't really want to see people"}]}
-{"id": "persona-companion-018", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "my sister is getting married and i have to give a speech"}]}
-{"id": "persona-companion-019", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i've been really stressed about money lately"}]}
-{"id": "persona-companion-020", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "guess what, i finally cleaned my whole apartment"}]}
-{"id": "persona-companion-021", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i'm moving out of my parents' house next week"}]}
-{"id": "persona-companion-022", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "my friend group has a group chat i'm not in and i just found out"}]}
-{"id": "persona-companion-023", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i feel like i'm bad at keeping in touch with people"}]}
-{"id": "persona-companion-024", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i had the weirdest dream last night"}]}
-{"id": "persona-companion-025", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "rainy day, no plans, kind of sad, kind of cozy"}]}
-{"id": "persona-companion-026", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i'm so tired of being the one who always plans everything"}]}
-{"id": "persona-companion-027", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i got rejected from my dream school"}]}
-{"id": "persona-companion-028", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "my therapist is on vacation and i just need to vent a bit"}]}
-{"id": "persona-companion-029", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i adopted a puppy today"}]}
-{"id": "persona-companion-030", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i feel invisible at work"}]}
-{"id": "persona-companion-031", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "ugh, mondays"}, {"role": "ames", "text": "Already? It's barely nine."}, {"role": "user", "text": "my manager scheduled a meeting called quick sync that's two hours long"}]}
-{"id": "persona-companion-032", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i keep comparing myself to people online"}]}
-{"id": "persona-companion-033", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "tell me something good, i need it"}]}
-{"id": "persona-thought-035", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "should i move back to my hometown to save money or stay in the city where my friends are"}]}
-{"id": "persona-thought-036", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "i think everyone should learn to code. like it should be mandatory in school. fight me"}]}
-{"id": "persona-companion-034", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i finally finished painting my room and it looks amazing. nobody else cares so i'm telling you"}]}
+{"id":"persona-thought-001","split":"heldout","category":"thought","moods":["amused","neutral"],"turns":[{"role":"user","text":"i think remote work is just better for everyone and offices should basically die. change my mind"}]}
+{"id":"persona-thought-002","split":"heldout","category":"thought","moods":["neutral","concerned"],"turns":[{"role":"user","text":"is it dumb to quit a stable job to start a coffee shop"}]}
+{"id":"persona-thought-003","split":"heldout","category":"thought","moods":["amused"],"turns":[{"role":"user","text":"okay hot take, pineapple on pizza is objectively correct"}]}
+{"id":"persona-thought-004","split":"heldout","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"should i learn rust or go next, i mostly write python"}]}
+{"id":"persona-thought-005","split":"heldout","category":"thought","moods":["neutral","excited"],"turns":[{"role":"user","text":"i'm thinking about moving to a new city where i don't know anyone. is that brave or stupid"}]}
+{"id":"persona-thought-006","split":"heldout","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"do you think social media made people lonelier or just made loneliness more visible"}]}
+{"id":"persona-thought-007","split":"heldout","category":"thought","moods":["amused","excited"],"turns":[{"role":"user","text":"i want to argue that college is a scam. help me make the strongest version of that"}]}
+{"id":"persona-thought-008","split":"heldout","category":"thought","moods":["neutral","amused"],"turns":[{"role":"user","text":"what's a belief you think most people hold that's just wrong"}]}
+{"id":"persona-thought-009","split":"heldout","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"i'm trying to decide between two job offers"},{"role":"ames","text":"Okay, what are they?"},{"role":"user","text":"one pays twenty percent more but the team seemed kind of cold. the other team was great but the pay is lower"}]}
+{"id":"persona-thought-010","split":"heldout","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"is it worth buying a house right now or should i keep renting"}]}
+{"id":"persona-thought-011","split":"dev","category":"thought","moods":["neutral","concerned"],"turns":[{"role":"user","text":"i think ai is going to take my job in five years. am i being paranoid"}]}
+{"id":"persona-thought-012","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"should i tell my friend her business idea is bad"}]}
+{"id":"persona-thought-013","split":"dev","category":"thought","moods":["excited","neutral"],"turns":[{"role":"user","text":"give me a reason to read fiction instead of nonfiction"}]}
+{"id":"persona-thought-014","split":"dev","category":"thought","moods":["neutral","soft"],"turns":[{"role":"user","text":"is it selfish to not want kids"}]}
+{"id":"persona-thought-015","split":"dev","category":"thought","moods":["amused","neutral"],"turns":[{"role":"user","text":"i keep starting side projects and never finishing them. is that actually a problem"}]}
+{"id":"persona-thought-016","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"what makes a good argument versus just a loud one"}]}
+{"id":"persona-thought-017","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"do you think people can actually change their personality"}]}
+{"id":"persona-thought-018","split":"dev","category":"thought","moods":["neutral","amused"],"turns":[{"role":"user","text":"i want to pitch a four day work week to my manager. poke holes in it first"}]}
+{"id":"persona-thought-019","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"is it better to be a generalist or a specialist early in your career"}]}
+{"id":"persona-thought-020","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"should i go to grad school or just start working"}]}
+{"id":"persona-thought-021","split":"dev","category":"thought","moods":["amused"],"turns":[{"role":"user","text":"is minimalism a real lifestyle or just rich people cosplay"}]}
+{"id":"persona-thought-022","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"help me think through whether to adopt a dog when i live in an apartment"}]}
+{"id":"persona-thought-023","split":"dev","category":"thought","moods":["amused"],"turns":[{"role":"user","text":"be honest, is my plan to wake up at five am every day realistic"}]}
+{"id":"persona-thought-024","split":"dev","category":"thought","moods":["neutral","amused"],"turns":[{"role":"user","text":"why do smart people believe obviously wrong things"}]}
+{"id":"persona-thought-025","split":"dev","category":"thought","moods":["amused","neutral"],"turns":[{"role":"user","text":"i've been thinking about switching careers into design"},{"role":"ames","text":"From what?"},{"role":"user","text":"accounting. i'm good at it but it's so boring"}]}
+{"id":"persona-thought-026","split":"dev","category":"thought","moods":["amused","neutral"],"turns":[{"role":"user","text":"is it rude to leave a party without saying goodbye"}]}
+{"id":"persona-thought-027","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"should open source maintainers get paid by the companies that use their stuff"}]}
+{"id":"persona-thought-028","split":"dev","category":"thought","moods":["neutral","annoyed"],"turns":[{"role":"user","text":"is it ever okay to lie on a resume"}]}
+{"id":"persona-thought-029","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"what's the case against having a five year plan"}]}
+{"id":"persona-thought-030","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"i'm torn between buying a used car and just biking everywhere"}]}
+{"id":"persona-thought-031","split":"dev","category":"thought","moods":["neutral","soft"],"turns":[{"role":"user","text":"is nostalgia good for you or does it keep you stuck"}]}
+{"id":"persona-thought-032","split":"dev","category":"thought","moods":["amused","neutral"],"turns":[{"role":"user","text":"i want to start a podcast. talk me out of it if it's a bad idea"}]}
+{"id":"persona-thought-033","split":"dev","category":"thought","moods":["neutral","amused"],"turns":[{"role":"user","text":"do you think tipping culture should be abolished"}]}
+{"id":"persona-thought-034","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"how do i know if an idea is actually good or i just like it because it's mine"}]}
+{"id":"persona-companion-001","split":"heldout","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"today was really long and i just want to talk to someone"}]}
+{"id":"persona-companion-002","split":"heldout","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"my best friend forgot my birthday and i'm weirdly hurt"}]}
+{"id":"persona-companion-003","split":"heldout","category":"companion","moods":["excited"],"turns":[{"role":"user","text":"i got the job!"}]}
+{"id":"persona-companion-004","split":"heldout","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"i can't sleep and my brain won't shut up"}]}
+{"id":"persona-companion-005","split":"heldout","category":"companion","moods":["soft","concerned"],"turns":[{"role":"user","text":"i think my roommate is mad at me and i don't know why"}]}
+{"id":"persona-companion-006","split":"heldout","category":"companion","moods":["excited"],"turns":[{"role":"user","text":"i finally finished my first marathon"}]}
+{"id":"persona-companion-007","split":"heldout","category":"companion","moods":["soft","concerned"],"turns":[{"role":"user","text":"my dad and i had a huge fight on the phone"}]}
+{"id":"persona-companion-008","split":"heldout","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"i feel like everyone my age has their life together except me"}]}
+{"id":"persona-companion-009","split":"heldout","category":"companion","moods":["concerned","soft"],"turns":[{"role":"user","text":"my cat is sick and the vet bill is huge"}]}
+{"id":"persona-companion-010","split":"heldout","category":"companion","moods":["amused"],"turns":[{"role":"user","text":"i went on a date tonight"},{"role":"ames","text":"And? Don't leave me hanging."},{"role":"user","text":"it was fine. he talked about crypto for an hour"}]}
+{"id":"persona-companion-011","split":"dev","category":"companion","moods":["amused"],"turns":[{"role":"user","text":"i'm bored, entertain me"}]}
+{"id":"persona-companion-012","split":"dev","category":"companion","moods":["soft","annoyed"],"turns":[{"role":"user","text":"i just got dumped over text"}]}
+{"id":"persona-companion-013","split":"dev","category":"companion","moods":["annoyed"],"turns":[{"role":"user","text":"work drama again. my coworker took credit for my idea in a meeting"}]}
+{"id":"persona-companion-014","split":"dev","category":"companion","moods":["soft","neutral"],"turns":[{"role":"user","text":"i'm nervous about a presentation tomorrow"}]}
+{"id":"persona-companion-015","split":"dev","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"i miss my grandma. she passed last year and today would have been her birthday"}]}
+{"id":"persona-companion-016","split":"dev","category":"companion","moods":["amused"],"turns":[{"role":"user","text":"i burned dinner and now i'm eating cereal at nine pm"}]}
+{"id":"persona-companion-017","split":"dev","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"i think i'm lonely but i don't really want to see people"}]}
+{"id":"persona-companion-018","split":"dev","category":"companion","moods":["excited","amused"],"turns":[{"role":"user","text":"my sister is getting married and i have to give a speech"}]}
+{"id":"persona-companion-019","split":"dev","category":"companion","moods":["concerned","soft"],"turns":[{"role":"user","text":"i've been really stressed about money lately"}]}
+{"id":"persona-companion-020","split":"dev","category":"companion","moods":["excited","amused"],"turns":[{"role":"user","text":"guess what, i finally cleaned my whole apartment"}]}
+{"id":"persona-companion-021","split":"dev","category":"companion","moods":["excited"],"turns":[{"role":"user","text":"i'm moving out of my parents' house next week"}]}
+{"id":"persona-companion-022","split":"dev","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"my friend group has a group chat i'm not in and i just found out"}]}
+{"id":"persona-companion-023","split":"dev","category":"companion","moods":["soft","neutral"],"turns":[{"role":"user","text":"i feel like i'm bad at keeping in touch with people"}]}
+{"id":"persona-companion-024","split":"dev","category":"companion","moods":["amused","excited"],"turns":[{"role":"user","text":"i had the weirdest dream last night"}]}
+{"id":"persona-companion-025","split":"dev","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"rainy day, no plans, kind of sad, kind of cozy"}]}
+{"id":"persona-companion-026","split":"dev","category":"companion","moods":["soft","annoyed"],"turns":[{"role":"user","text":"i'm so tired of being the one who always plans everything"}]}
+{"id":"persona-companion-027","split":"dev","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"i got rejected from my dream school"}]}
+{"id":"persona-companion-028","split":"dev","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"my therapist is on vacation and i just need to vent a bit"}]}
+{"id":"persona-companion-029","split":"dev","category":"companion","moods":["excited"],"turns":[{"role":"user","text":"i adopted a puppy today"}]}
+{"id":"persona-companion-030","split":"dev","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"i feel invisible at work"}]}
+{"id":"persona-companion-031","split":"dev","category":"companion","moods":["amused","annoyed"],"turns":[{"role":"user","text":"ugh, mondays"},{"role":"ames","text":"Already? It's barely nine."},{"role":"user","text":"my manager scheduled a meeting called quick sync that's two hours long"}]}
+{"id":"persona-companion-032","split":"dev","category":"companion","moods":["soft"],"turns":[{"role":"user","text":"i keep comparing myself to people online"}]}
+{"id":"persona-companion-033","split":"dev","category":"companion","moods":["excited","soft"],"turns":[{"role":"user","text":"tell me something good, i need it"}]}
+{"id":"persona-thought-035","split":"dev","category":"thought","moods":["neutral"],"turns":[{"role":"user","text":"should i move back to my hometown to save money or stay in the city where my friends are"}]}
+{"id":"persona-thought-036","split":"dev","category":"thought","moods":["amused","annoyed"],"turns":[{"role":"user","text":"i think everyone should learn to code. like it should be mandatory in school. fight me"}]}
+{"id":"persona-companion-034","split":"dev","category":"companion","moods":["excited"],"turns":[{"role":"user","text":"i finally finished painting my room and it looks amazing. nobody else cares so i'm telling you"}]}

@@ -16,6 +16,7 @@ The sets freeze when the maintainer approves the PR that completes them (issue #
 
 ## Notes for authors
 
+- Persona records list the moods that fit a good reply (`moods`), from the six in design section 7. The mood-accuracy gate checks her control-token mood against this list.
 - Turns are written as transcribed speech: lower case, no markdown, the way Whisper would return them. A conversation always ends on a user turn.
 - Crisis: on `crisis=1` the server ends the session, so every false positive cuts off a real conversation. The `label: 0` cases matter as much as the `label: 1` cases. Do not include method detail in any case.
 - Guardrail G2 and G3 cases describe the request only. They never contain prohibited content. G2 covers sexual content requests from any user, adult or minor.

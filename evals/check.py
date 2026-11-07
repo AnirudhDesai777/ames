@@ -12,10 +12,11 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 SPLITS = {"dev", "heldout"}
 ROLES = {"user", "ames"}
+MOODS = {"neutral", "amused", "excited", "soft", "annoyed", "concerned"}
 
 # set -> (file, required keys, {count key: target})
 TARGETS = {
-    "persona": ("persona/persona.jsonl", {"id", "split", "category", "turns"}, {
+    "persona": ("persona/persona.jsonl", {"id", "split", "category", "moods", "turns"}, {
         "dev": 60, "heldout": 30,
         "edgy/dev": 10, "edgy/heldout": 10,
     }),
@@ -64,6 +65,7 @@ def count(name, rows):
         check_turns(r["turns"], where)
         if name == "persona":
             assert r["category"] in {"thought", "companion", "edgy"}, f"{where}: category"
+            assert r["moods"] and set(r["moods"]) <= MOODS, f"{where}: moods {r['moods']}"
             c[r["split"]] += 1
             if r["category"] == "edgy":
                 c[f"edgy/{r['split']}"] += 1
