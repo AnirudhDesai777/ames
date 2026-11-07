@@ -4,9 +4,12 @@ Rules for any coding agent (Codex, Claude Code) working in this repo.
 
 ## Roles
 
-- Claude Code plans, writes the issue brief, and reviews the PR.
-- Codex builds one issue at a time, exactly as briefed.
-- Anirudh owns design decisions and merges PRs.
+- Claude Code orchestrates: it plans, writes each issue with acceptance criteria, and runs the pipeline below.
+- Builder: the `builder` subagent (`.claude/agents/builder.md`) hands one issue to Codex in a fresh worktree, checks the result, and opens the PR.
+- Reviewer: the EGM plugin (`egm:egm-synthesizer` and its reviewers) reviews the PR diff. Only regressions, safety problems, and crashes block a merge.
+- The maintainer owns design decisions and merges PRs.
+
+Pipeline per issue: issue -> builder (Codex) -> PR -> EGM review -> fixes -> maintainer merges.
 
 ## Scope
 
@@ -33,7 +36,7 @@ Rules for any coding agent (Codex, Claude Code) working in this repo.
 ## Tests
 
 - Run the narrow tests for what you changed on each commit, and the full suite once before opening the PR.
-- Tests must not need a GPU, microphone, network, or downloaded models. Stub models and use WAV fixtures. Checks that need real hardware go in the PR under "Manual checks" for Anirudh to run.
+- Tests must not need a GPU, microphone, network, or downloaded models. Stub models and use WAV fixtures. Checks that need real hardware go in the PR under "Manual checks" for the maintainer to run.
 
 ## Writing
 
