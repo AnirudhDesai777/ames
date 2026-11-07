@@ -1,5 +1,6 @@
 import asyncio
 import json
+import secrets
 import stat
 from unittest.mock import AsyncMock, Mock
 
@@ -20,8 +21,9 @@ async def client(tmp_path, monkeypatch):
     (web_root / "index.html").write_text('<script src="/assets/app.js"></script>')
     (web_root / "assets").mkdir()
     (web_root / "assets/app.js").write_text("// bundled client")
-    async with TestClient(TestServer(create_app(tmp_path / "data", web_root))) as client:
-        client.token = (tmp_path / "data/token").read_text()
+    token = secrets.token_urlsafe(32)
+    async with TestClient(TestServer(create_app(token, web_root))) as client:
+        client.token = token
         yield client
 
 
@@ -73,6 +75,22 @@ async def test_missing_or_wrong_token(client, method, path, token):
     assert response.status == 401
 
 
+async def test_invalid_utf8_token_returns_401(client):
+    reader, writer = await asyncio.open_connection(client.server.host, client.server.port)
+    try:
+        writer.write(
+            b"GET /api/health HTTP/1.1\r\n"
+            b"Host: 127.0.0.1:8765\r\n"
+            b"X-Ames-Token: \xff\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        await writer.drain()
+        assert await reader.readline() == b"HTTP/1.1 401 Unauthorized\r\n"
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
 @pytest.mark.parametrize("host", ["127.0.0.1:8765", "localhost:8765"])
 async def test_health_with_same_origin_or_no_origin(client, host):
     for origin in [None, f"http://{host}"]:
@@ -102,9 +120,11 @@ async def test_page_and_assets_are_public_and_contain_no_token(client):
 
 def test_token_rotates_and_has_private_permissions(tmp_path):
     data_dir = tmp_path / "data"
-    first = write_token(data_dir)
+    first = secrets.token_urlsafe(32)
+    write_token(data_dir, first)
     (data_dir / "token").chmod(0o644)
-    second = write_token(data_dir)
+    second = secrets.token_urlsafe(32)
+    write_token(data_dir, second)
     assert first != second
     assert len(second) >= 32
     assert (data_dir / "token").read_text() == second
@@ -142,6 +162,42 @@ async def test_invalid_sdp_closes_new_connection(client, monkeypatch):
     assert response.status == 400
     assert "private SDP" not in await response.text()
     connection.disconnect.assert_awaited_once()
+
+
+async def test_failed_session_close_disconnects_replacement(client, monkeypatch, caplog):
+    connections = []
+
+    def connection_factory():
+        connection = Mock()
+        connection.pc.connectionState = "new"
+
+        async def initialize(sdp, offer_type):
+            connection.pc.connectionState = "connected"
+
+        async def disconnect():
+            connection.pc.connectionState = "closed"
+
+        connection.initialize = AsyncMock(side_effect=initialize)
+        connection.disconnect = AsyncMock(side_effect=disconnect)
+        connection.get_answer.return_value = {"type": "answer", "sdp": "stub"}
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(app_module, "echo_connection", connection_factory)
+    run_echo = AsyncMock()
+    monkeypatch.setattr(app_module, "run_echo", run_echo)
+    offer = {"type": "offer", "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"}
+    first = await client.post("/api/offer", headers=headers(client), json=offer)
+    assert first.status == 200
+    connections[0].disconnect.side_effect = [RuntimeError("close failed"), None]
+
+    response = await client.post("/api/offer", headers=headers(client), json=offer)
+    assert response.status == 500
+    assert "close failed" in caplog.text
+    connections[1].initialize.assert_awaited_once()
+    connections[1].disconnect.assert_awaited_once()
+    assert connections[1].pc.connectionState == "closed"
+    assert run_echo.await_count == 1
 
 
 def test_rtvi_emitters():
@@ -232,7 +288,9 @@ async def test_real_offer_rtvi_and_session_replaced(client, monkeypatch):
 
 def test_startup_opens_chrome_with_token_only_in_fragment(tmp_path, monkeypatch):
     monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
-    token = write_token(tmp_path)
+    token = secrets.token_urlsafe(32)
+    monkeypatch.setattr(app_module.secrets, "token_urlsafe", Mock(return_value=token))
+    write_token(tmp_path, "old token")
     browser = Mock()
     monkeypatch.setattr(app_module.webbrowser, "get", Mock(return_value=browser))
     monkeypatch.setattr(app_module.os, "umask", Mock())
@@ -243,7 +301,9 @@ def test_startup_opens_chrome_with_token_only_in_fragment(tmp_path, monkeypatch)
         assert kwargs["host"] == "127.0.0.1"
         assert kwargs["port"] == 8765
         assert kwargs["access_log"] is None
+        assert (tmp_path / "token").read_text() == "old token"
         kwargs["print"]("Listening")
+        assert (tmp_path / "token").read_text() == token
 
     monkeypatch.setattr(app_module.web, "run_app", serve)
     app_module.main()
@@ -251,12 +311,18 @@ def test_startup_opens_chrome_with_token_only_in_fragment(tmp_path, monkeypatch)
     browser.open.assert_called_once_with(f"http://127.0.0.1:8765/#t={token}")
 
 
-def test_port_in_use_reports_port_without_opening_browser(monkeypatch):
-    monkeypatch.setattr(app_module.web, "run_app", Mock(side_effect=OSError("Address in use")))
+def test_failed_bind_preserves_token_without_opening_browser(tmp_path, monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
+    monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
+    write_token(tmp_path, "live token")
+    bind = AsyncMock(side_effect=OSError("Address in use"))
+    monkeypatch.setattr(asyncio.BaseEventLoop, "create_server", bind)
     monkeypatch.setattr(app_module.webbrowser, "get", Mock())
     monkeypatch.setattr(app_module.os, "umask", Mock())
     monkeypatch.setattr(app_module.logger, "remove", Mock())
     monkeypatch.setattr(app_module.logger, "add", Mock())
     with pytest.raises(SystemExit, match="port 8765 is in use"):
         app_module.main()
+    bind.assert_awaited_once()
+    assert (tmp_path / "token").read_text() == "live token"
     app_module.webbrowser.get.assert_not_called()

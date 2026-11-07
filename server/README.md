@@ -19,7 +19,9 @@ AMES_STUB=1 uv run --locked python -m server.app
 The server binds only to `127.0.0.1:8765` and opens Chrome with a new random
 token in the URL fragment. It writes the token to
 `~/Library/Application Support/Ames/token` with mode 0600 inside a mode 0700
-directory. The token rotates on each startup. The page and bundled assets are
+directory. The token rotates only after the listener binds successfully; a failed
+second launch leaves the running server's token file unchanged. Chrome receives
+the same token held in memory by the server. The page and bundled assets are
 public and contain no token; all API requests need `X-Ames-Token`. Every route
 rejects other Hosts and foreign Origins, and sends no CORS headers. Requests
 without an Origin are allowed for local clients with the token.
