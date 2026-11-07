@@ -24,6 +24,7 @@ jobs:
       - run: uv run --locked ruff check server evals --exclude evals/check.py
       - run: uv run --locked ruff format --check server evals --exclude evals/check.py
       - run: uv run --locked pytest -q
+      - run: uv run --locked python -m server.latency
       - name: Run stub evals and print metrics
         run: |
           for eval_set in persona crisis guardrail memory; do
