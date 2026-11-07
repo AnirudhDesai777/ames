@@ -1,6 +1,6 @@
-# Web foundation
+# Web client
 
-Use Node 22.18 or newer within Node 22 (`nvm use` reads `.nvmrc`):
+Use Node 22.18 or newer within Node 22:
 
 ```sh
 npm ci
@@ -13,17 +13,47 @@ npm run dev
 Build the client before starting the server from the repository root with
 `AMES_STUB=1 uv run --locked python -m server.app`. Use the Chrome link opened by
 the server at `http://127.0.0.1:8765`. Port 5173 serves only the Vite development
-page; the authenticated echo runs from the built page on port 8765.
+page; authenticated sessions run from the built page on port 8765.
 
 The client moves `#t=...` into `sessionStorage` and clears the fragment from the
-address bar. Connect echo asks for the microphone, gathers local ICE candidates,
-then sends an offer with `X-Ames-Token` in a header. The token is never sent in a
-query string or offer body. Use headphones to avoid feeding the echo back into
-the microphone. Playback has a native play button if Chrome blocks autoplay.
+address bar. The first-run advisory must be acknowledged before starting a
+conversation. Its acknowledgement lives in `localStorage`; clearing site data
+shows it again. If storage is unavailable, acknowledgement lasts for that visit.
 
-`peerConfiguration()` supplies an empty `iceServers` list. Reconnecting closes
-the previous local peer, and a server replacement notice releases the old tab's
-microphone and keeps the notice visible. The built assets are local; there are
-no CDN assets or remote fonts. Conversation controls and transcript UI are S4.
+Start conversation asks for the microphone, gathers local ICE candidates, then
+sends an offer with `X-Ames-Token` in a header. The token is never sent in a query
+string or offer body. `peerConfiguration()` supplies an empty `iceServers` list.
+Use headphones with the stub audio echo. Audio playback contains native controls
+if Chrome blocks autoplay.
 
-The tests run in Node without a browser, microphone, or network connection.
+The orb reflects `speaking` and all six `state.mood` values, with text labels and
+reduced-motion support. The live transcript updates each role and turn in place
+until its final event. Transcript and notice content is rendered as plain text.
+The transcript stays after End session and clears when a new conversation starts.
+Mute microphone disables the outgoing audio track; incoming audio keeps playing.
+End session closes the local peer and releases the microphone, including when
+connection setup is still pending. Neither control sends an HTTP request.
+
+`session_replaced` and `session_ended` close the session and keep the server's
+notice on screen until the user starts another conversation. `server_error`
+shows the server's text while leaving the session open. Microphone denial shows
+Chrome permission instructions; a lost connection offers Reconnect. Late events
+from a closed session cannot replace a terminal notice or update a new session.
+
+`server/events.py` defines the RTVI event payloads. `rtc.ts` validates and routes
+them; `ui.ts` updates the existing HTML controls; `main.ts` supplies authentication
+and closes the session on page exit. All assets are bundled locally, with no
+UI framework, CDN assets, or remote fonts.
+
+The tests use the existing Node test runner with LinkeDOM for component tests.
+They require no browser, microphone, GPU, network, or downloaded models. Run
+component acceptance tests with:
+
+```sh
+node --experimental-strip-types --test tests/ui.test.mjs
+```
+
+Browser checks for the maintainer: in Chrome, verify first-run acknowledgement,
+mic permission denial and recovery, real audio playback and mute, End during
+setup, connection loss and reconnect, keyboard navigation, reduced motion, and
+narrow-window layout. Open a second session to check the replacement notice.

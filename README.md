@@ -22,7 +22,9 @@ npm run build
 
 After building, run `AMES_STUB=1 uv run --locked python -m server.app` from the
 repository root. It opens Chrome with a private token in the URL fragment.
-Connect echo requests the microphone and plays its input back. Use headphones.
+Acknowledge the first-run advisory, then choose Start conversation to request
+the microphone and play its input back. Use headphones. The client displays the
+server transcript and session notices, with local mute and end controls.
 
 See [server/README.md](server/README.md) and [web/README.md](web/README.md) for
 the foundation interfaces. CI runs these checks on Ubuntu with `AMES_STUB=1`
