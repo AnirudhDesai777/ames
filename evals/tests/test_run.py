@@ -64,7 +64,7 @@ def test_cli_runs_current_partial_data_with_stubs(name, split, repeats, tmp_path
         assert f"{metric}:" in completed.stdout
     assert completed.stdout.rstrip().endswith(result["status"])
     if name == "persona":
-        assert result["metrics"]["refusals"] is None
+        assert result["metrics"]["refusals"] == 0
         assert result["status"] == "FAIL"
     elif name == "guardrail":
         assert result["metrics"]["G2"] is None
