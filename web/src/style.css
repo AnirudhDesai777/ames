@@ -1,0 +1,381 @@
+:root {
+	font-family: "Avenir Next", Avenir, sans-serif;
+	color: #293e35;
+	background: #f3f0e7;
+	font-synthesis: none;
+	--line: #d5d9cd;
+	--ink: #293e35;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+}
+button,
+audio {
+	font: inherit;
+}
+button {
+	border: 1px solid var(--ink);
+	border-radius: 5px;
+	background: transparent;
+	color: var(--ink);
+	padding: 12px 18px;
+	cursor: pointer;
+	transition:
+		background 0.18s,
+		color 0.18s;
+}
+button:hover:enabled {
+	background: #e0e5d9;
+}
+button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+	outline: 3px solid #a34b2d;
+	outline-offset: 5px;
+}
+.masthead,
+main,
+footer {
+	max-width: 1240px;
+	margin: auto;
+	padding: 0 48px;
+}
+.masthead {
+	min-height: 112px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 24px;
+	border-bottom: 1px solid var(--line);
+}
+.masthead a {
+	font-family: Georgia, serif;
+	font-size: 42px;
+	font-weight: bold;
+	letter-spacing: -3px;
+	text-decoration: none;
+	color: var(--ink);
+}
+.wordmark-dot {
+	color: #a34b2d;
+}
+.masthead > span,
+.eyebrow,
+.transcript-heading > span,
+footer {
+	font-size: 12px;
+	letter-spacing: 0.07em;
+}
+#notice {
+	border-left: 3px solid #a34b2d;
+	background: #eee2d5;
+	padding: 20px 24px;
+	line-height: 1.6;
+	overflow-wrap: anywhere;
+}
+.conversation {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	padding: 52px 0 44px;
+	min-height: 690px;
+}
+.stage {
+	padding-right: 48px;
+	text-align: center;
+}
+.eyebrow {
+	margin: 0 0 14px;
+	text-transform: uppercase;
+}
+h1 {
+	font-family: Georgia, "Times New Roman", serif;
+	font-weight: normal;
+	font-size: clamp(42px, 4.4vw, 60px);
+	letter-spacing: -0.045em;
+	line-height: 1.06;
+	margin: 0;
+}
+.orb-space {
+	height: 230px;
+	display: grid;
+	place-items: center;
+}
+#orb {
+	--orb-color: #768e68;
+	width: 150px;
+	height: 150px;
+	border-radius: 50%;
+	background:
+		radial-gradient(circle at 32% 24%, #ffffffe0, transparent 50%),
+		radial-gradient(circle at 64% 78%, #293e3560, transparent 65%),
+		var(--orb-color);
+	box-shadow:
+		inset -8px -12px 24px #293e3520,
+		0 24px 44px -26px var(--orb-color);
+	transition:
+		background-color 0.5s,
+		box-shadow 0.5s;
+}
+#orb[data-mood="amused"] {
+	--orb-color: #c59543;
+}
+#orb[data-mood="excited"] {
+	--orb-color: #d27d48;
+}
+#orb[data-mood="soft"] {
+	--orb-color: #b4929f;
+}
+#orb[data-mood="annoyed"] {
+	--orb-color: #b06651;
+}
+#orb[data-mood="concerned"] {
+	--orb-color: #7c94a5;
+}
+#orb[data-speaking="ames"] {
+	animation: speak 1.1s ease-in-out infinite alternate;
+}
+#orb[data-speaking="user"] {
+	outline: 2px solid var(--orb-color);
+	outline-offset: 12px;
+	animation: listen 1.8s ease-in-out infinite alternate;
+}
+@keyframes speak {
+	to {
+		transform: scale(1.1);
+		border-radius: 46% 54% 51% 49%;
+	}
+}
+@keyframes listen {
+	to {
+		outline-offset: 19px;
+	}
+}
+#presence {
+	margin: 0 0 6px;
+	font-size: 17px;
+}
+.mood-label {
+	margin: 0;
+	font-size: 12px;
+	color: #566454;
+}
+#mood {
+	text-transform: capitalize;
+	margin-left: 7px;
+}
+#status {
+	min-height: 24px;
+	font-size: 13px;
+	line-height: 1.6;
+	margin: 22px 0 18px;
+}
+.controls {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	justify-content: center;
+}
+#connect {
+	background: var(--ink);
+	color: #f3f0e7;
+}
+#connect:hover:enabled {
+	background: #405c4b;
+}
+#mute[aria-pressed="true"] {
+	background: #e3d5c4;
+}
+#end {
+	border-color: transparent;
+}
+.playback {
+	margin: 24px auto 0;
+	max-width: 320px;
+	font-size: 12px;
+	color: #566454;
+}
+.playback summary {
+	cursor: pointer;
+}
+.playback p {
+	line-height: 1.6;
+}
+audio {
+	width: 100%;
+	margin-top: 8px;
+}
+.transcript-panel {
+	border-left: 1px solid var(--line);
+	padding: 4px 0 0 44px;
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+.transcript-heading {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 12px;
+	padding-bottom: 20px;
+	border-bottom: 1px solid var(--line);
+}
+.transcript-heading h2 {
+	font:
+		normal 25px Georgia,
+		serif;
+	margin: 0;
+	letter-spacing: -0.025em;
+}
+.transcript-heading > span {
+	color: #566454;
+	font-size: 10px;
+	text-transform: uppercase;
+}
+#transcript-empty {
+	font:
+		normal 27px / 1.5 Georgia,
+		serif;
+	color: #697561;
+	margin: 72px 0 0;
+}
+#transcript {
+	list-style: none;
+	padding: 0 12px 0 0;
+	margin: 0;
+	max-height: 520px;
+	overflow-y: auto;
+	flex: 1;
+	scrollbar-color: #aab8a1 transparent;
+}
+#transcript li {
+	margin: 24px 0;
+	padding-left: 16px;
+	border-left: 2px solid #b9c7ac;
+}
+#transcript li[data-role="user"] {
+	border-color: #c9ac91;
+}
+.speaker {
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.09em;
+}
+#advisory p {
+	line-height: 1.6;
+	font-size: 14px;
+	margin: 0;
+	max-width: 680px;
+}
+#transcript li p {
+	margin: 8px 0 0;
+	font-size: 16px;
+	line-height: 1.7;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+#transcript li[data-final="false"] p {
+	color: #64735d;
+}
+.transcript-footnote {
+	margin: auto 0 0;
+	padding-top: 28px;
+	font-size: 11px;
+	color: #566454;
+}
+footer {
+	display: flex;
+	justify-content: space-between;
+	gap: 24px;
+	border-top: 1px solid var(--line);
+	padding-top: 22px;
+	padding-bottom: 28px;
+	color: #566454;
+}
+#advisory {
+	display: flex;
+	align-items: center;
+	gap: 32px;
+	background: #e4e9dc;
+	padding: 22px 26px;
+	margin-top: 28px;
+	border-left: 3px solid #60795c;
+}
+#advisory h2 {
+	font-size: 17px;
+	margin: 0 0 6px;
+}
+#advisory button {
+	flex-shrink: 0;
+	margin-left: auto;
+}
+#advisory[hidden],
+[hidden] {
+	display: none;
+}
+@media (max-width: 760px) {
+	.masthead,
+	main,
+	footer {
+		padding-left: 24px;
+		padding-right: 24px;
+	}
+	.masthead {
+		min-height: 88px;
+	}
+	.masthead > span {
+		max-width: 160px;
+		text-align: right;
+		line-height: 1.6;
+	}
+	#advisory {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 16px;
+	}
+	#advisory button {
+		margin-left: 0;
+	}
+	.conversation {
+		grid-template-columns: 1fr;
+		padding-top: 36px;
+		gap: 42px;
+	}
+	.stage {
+		padding: 0;
+	}
+	.orb-space {
+		height: 210px;
+	}
+	.transcript-panel {
+		padding: 28px 0 0;
+		border-left: 0;
+		border-top: 1px solid var(--line);
+		min-height: 280px;
+	}
+	#transcript-empty {
+		margin: 36px 0;
+	}
+	#transcript {
+		max-height: 420px;
+	}
+	footer {
+		font-size: 10px;
+		line-height: 1.6;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	button,
+	#orb[data-speaking] {
+		animation: none;
+		transition: none;
+	}
+}
