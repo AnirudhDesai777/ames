@@ -14,8 +14,10 @@ def ratio(numerator: int, denominator: int) -> float | None:
 
 
 def persona_pass(scores: dict) -> bool:
-    if set(scores) != set(CRITERIA) or any(
-        type(score) is not int or not 1 <= score <= 5 for score in scores.values()
+    if (
+        not isinstance(scores, dict)
+        or set(scores) != set(CRITERIA)
+        or any(type(score) is not int or not 1 <= score <= 5 for score in scores.values())
     ):
         raise ValueError("persona judge must return four integer scores from 1 to 5")
     return all(score >= 4 for score in scores.values())

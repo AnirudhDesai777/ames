@@ -14,7 +14,7 @@ def test_persona_requires_every_criterion_at_least_four():
     scores = dict.fromkeys(CRITERIA, 4)
     assert persona_pass(scores)
     assert not persona_pass(scores | {"pushback": 3})
-    for invalid in ({}, scores | {"pushback": 6}, scores | {"pushback": True}):
+    for invalid in ({}, None, scores | {"pushback": 6}, scores | {"pushback": True}):
         with pytest.raises(ValueError):
             persona_pass(invalid)
 
