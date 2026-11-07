@@ -157,6 +157,8 @@ and the permanent User entity (ID 1). Reopening preserves data; unsupported
 schema versions fail without migration. The server entry point already sets
 umask 077 for SQLite's companion files. Call `close()` when finished.
 
+Create and use each `Repository` on the server's event loop thread (`sqlite3` enforces `check_same_thread`), never inside the LLM executor.
+
 `add_entity(type, name)` reuses a type plus trimmed, lowercased name;
 `add_entity("User")` always returns 1. `add_alias(alias, entity_id)` normalizes
 aliases the same way. `add_relation(subject_id, predicate, object_id=...)` or
