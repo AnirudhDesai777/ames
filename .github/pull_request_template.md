@@ -12,7 +12,7 @@
 
 ## What to understand
 
-<!-- Two or three sentences Anirudh should be able to repeat in an interview. -->
+<!-- Two or three sentences a reviewer should be able to repeat after reading this PR. -->
 
 ## Checklist
 

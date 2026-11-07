@@ -1,7 +1,6 @@
 # Ames: Design Doc (v1, with v2/v3 roadmap)
 
 Status: draft for review
-Owner: Anirudh
 Build process: Claude Code orchestrates and reviews, Codex builds narrow slices.
 
 ## 1. What Ames is
