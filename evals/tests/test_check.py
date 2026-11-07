@@ -28,7 +28,7 @@ def test_memory_split_counts(memory_rows, capsys):
         "memory-009",
     ]
     heldout = [row for row in memory_rows if row["split"] == "heldout"]
-    assert sum(len(row["gold_facts"]) for row in heldout) == 27
+    assert sum(len(row["gold_facts"]) for row in heldout) == 32
     assert sum(len(row["questions"]) for row in heldout) == 48
     check.main()
     assert "memory: ok" in capsys.readouterr().out
