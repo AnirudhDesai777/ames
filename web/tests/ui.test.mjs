@@ -6,7 +6,7 @@ import { mountConversation } from "../src/ui.ts";
 
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
-function setup({ token = "test-token", seen = true, storage, pending = false, error } = {}) {
+function setup({ token = "test-token", seen = true, storage, browser, pending = false, error } = {}) {
   const { document } = parseHTML(html);
   const values = new Map(seen ? [["ames-advisory-seen", "true"]] : []);
   storage ??= { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
@@ -21,7 +21,7 @@ function setup({ token = "test-token", seen = true, storage, pending = false, er
     else if (!pending) resolve();
     return session;
   };
-  const dispose = mountConversation(document, token, storage, connect);
+  const dispose = mountConversation(document, token, browser ?? { localStorage: storage }, connect);
   const element = (id) => document.getElementById(id);
   return { document, element, sessions, values, dispose,
     click: (id) => element(id).click(),
@@ -65,6 +65,23 @@ test("unavailable localStorage still requires acknowledgement for this visit", a
   ui.click("connect");
   await tick();
   assert.equal(ui.sessions.length, 1);
+});
+
+test("a blocked localStorage property still mounts and keeps acknowledgement for this visit", async () => {
+  const browser = { get localStorage() { throw new DOMException("Site data blocked", "SecurityError"); } };
+  const ui = setup({ browser });
+  assert.equal(ui.element("advisory").hidden, false);
+  assert.equal(ui.element("connect").disabled, true);
+  ui.click("acknowledge");
+  assert.equal(ui.element("advisory").hidden, true);
+  ui.click("connect");
+  await tick();
+  ui.click("end");
+  ui.click("connect");
+  await tick();
+  assert.equal(ui.sessions.length, 2);
+  assert.equal(ui.element("advisory").hidden, true);
+  assert.equal(setup({ browser }).element("advisory").hidden, false);
 });
 
 test("missing token keeps connect disabled and shows server-link instructions", () => {

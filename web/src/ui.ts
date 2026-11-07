@@ -3,7 +3,7 @@ import type { Mood, Session, SessionEvent, Speaker, startSession } from "./rtc";
 export function mountConversation(
   document: Document,
   token: string | null,
-  storage: Pick<Storage, "getItem" | "setItem">,
+  browser: Pick<Window, "localStorage">,
   connect: typeof startSession,
 ): () => void {
   const find = <T extends HTMLElement>(id: string): T => {
@@ -26,7 +26,7 @@ export function mountConversation(
   const empty = find("transcript-empty");
   const turns = new Map<string, { row: HTMLLIElement; text: HTMLParagraphElement; final: boolean }>();
   let seen = false;
-  try { seen = storage.getItem("ames-advisory-seen") === "true"; } catch { /* Site storage may be disabled. */ }
+  try { seen = browser.localStorage.getItem("ames-advisory-seen") === "true"; } catch { /* Site storage may be disabled. */ }
   let running = false;
   let muted = false;
   let session: Session | undefined;
@@ -109,7 +109,7 @@ export function mountConversation(
   finish(token ? "Ready when you are" : "Open the link from the server to connect.");
   acknowledge.addEventListener("click", () => {
     seen = true;
-    try { storage.setItem("ames-advisory-seen", "true"); } catch { /* Acknowledgement still applies to this visit. */ }
+    try { browser.localStorage.setItem("ames-advisory-seen", "true"); } catch { /* Acknowledgement still applies to this visit. */ }
     advisory.hidden = true;
     start.disabled = !token;
     start.focus();
