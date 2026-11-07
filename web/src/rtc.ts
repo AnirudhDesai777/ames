@@ -63,8 +63,9 @@ export function startSession(
   peer.addEventListener("track", (event) => {
     if (closed) return;
     audio.srcObject = new MediaStream([event.track]);
-    // Native audio controls let the user resume playback when Chrome blocks autoplay.
-    audio.play().catch(() => { audio.controls = true; });
+    audio.play().catch(() => {
+      if (!closed) audio.closest("details")?.setAttribute("open", "");
+    });
   });
   const channel = peer.createDataChannel("rtvi-ai");
   channel.addEventListener("close", lost);

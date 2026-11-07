@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { parseHTML } from "linkedom";
 import { peerConfiguration, startSession } from "../src/rtc.ts";
 
 test("WebRTC uses no STUN or TURN servers", () => {
@@ -114,6 +116,32 @@ test("a failed connection releases the microphone", async (t) => {
   setup.peer.dispatchEvent(new Event("connectionstatechange"));
   assert.deepEqual(notices, ["Connection lost. Connect again."]);
   assert.equal(setup.track.stop.mock.callCount(), 1);
+});
+
+test("blocked autoplay opens playback instructions and native controls", async (t) => {
+  const setup = browser(t);
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "MediaStream");
+  t.after(() => {
+    if (descriptor) Object.defineProperty(globalThis, "MediaStream", descriptor);
+    else delete globalThis.MediaStream;
+  });
+  globalThis.MediaStream = class {};
+  const { document } = parseHTML(readFileSync(new URL("../index.html", import.meta.url), "utf8"));
+  const audio = document.getElementById("audio");
+  audio.play = t.mock.fn(async () => { throw new DOMException("Autoplay blocked", "NotAllowedError"); });
+  const playback = audio.closest("details");
+  const session = startSession("token", audio, () => {}, () => {});
+  await session.ready;
+  assert.equal(playback.hasAttribute("open"), false);
+  const event = new Event("track");
+  event.track = setup.track;
+  setup.peer.dispatchEvent(event);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(audio.play.mock.callCount(), 1);
+  assert.equal(playback.hasAttribute("open"), true);
+  assert.equal(audio.hasAttribute("controls"), true);
+  assert.match(playback.textContent, /press play/);
+  session.close();
 });
 
 function send(setup, data) {
