@@ -73,8 +73,7 @@ def evaluate(
 ) -> dict:
     if name not in SETS or split not in ("dev", "heldout"):
         raise ValueError("unknown eval set or split")
-    # Memory has no split field in the frozen schema; both selections run the same records.
-    rows = rows if name == "memory" else [row for row in rows if row["split"] == split]
+    rows = [row for row in rows if row["split"] == split]
     prompt = system_prompt()
     cases = []
     for row in rows:
@@ -171,7 +170,7 @@ def evaluate(
     gate_results = gates(name, metrics)
     return {
         "set": name,
-        "split": "unsplit" if name == "memory" else split,
+        "split": split,
         "requested_split": split,
         "counts": counts,
         "metrics": metrics,
