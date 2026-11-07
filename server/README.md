@@ -113,3 +113,43 @@ access and checks cancellation before advancing each token. User speech,
 interruption, and pipeline cancellation stop generation; a ten-second token
 timeout emits an error. A failed or incomplete turn produces no percentile
 report. No transcript or generated text is printed by the harness.
+
+## Streaming reply text
+
+`server.control_tokens.parse_chunk(state, text)` is a pure function. Start each
+reply with a fresh `ParserState()`, pass the returned `state` into the next call,
+and finish with `parse_chunk(state, "", final=True)`. Discard the state when a
+reply ends or is interrupted. No state is shared between replies.
+
+The initial `<state mood=... crisis=...>` sets `state.mood` and `state.crisis`
+without reaching either output. Before it is recognized, only prefixes of the
+six allowed inline tags or a valid control token wait across chunks. Missing or
+malformed control tokens default to neutral and 0, then follow the body rules.
+`error_code` reports `control_token_missing` or `control_token_malformed` once
+per reply. The caller must log only this code, never text or parser state.
+
+In the body, `<` waits across chunks while it can form a tag: a letter or `/`
+first, then only letters, digits, `_`, `-` or `=`. Spaces are allowed only after
+`<state`. The candidate, including delimiters, is limited to 32 characters. If
+the shape breaks or exceeds the limit, its `<` is emitted as ordinary text and
+scanning continues after it. Unfinished candidates are emitted as ordinary text
+at the end. Literal text such as `3 < 5`, `x < y and y > z` and `<3 you` is
+preserved without waiting for the reply to end.
+
+Feed `tts_text` into the sentence splitter before TTS. The six inline tags listed
+in design section 7 reach TTS and are omitted from `transcript_text`. Other
+well-formed tags, such as `<bogus>`, `<smile>` and `</laugh>`, are removed from
+both outputs. Asterisks are removed only when
+opening a span (start, whitespace or punctuation before; non-space after) or
+closing one (non-space before; end, whitespace or punctuation after). Words are
+preserved: `*really*` becomes `really` and `*waves*` becomes `waves`, while `2*3`,
+`a * b` and `* item` stay unchanged. At most one trailing `*` waits across chunks
+for lookahead. Send `transcript_text` to the visible transcript. Ordinary spacing
+after the leading control token is preserved. Pipeline wiring and the crisis
+exit belong to later slices; this module only parses the crisis flag.
+
+Run the chunk-boundary, malformed-token, and transcript checks without models:
+
+```sh
+AMES_STUB=1 uv run --locked pytest -q server/tests/test_control_tokens.py
+```
