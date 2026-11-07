@@ -25,7 +25,7 @@ Read this before searching. Paths marked (planned) do not exist yet; the first i
 | `server/` | Python server: Pipecat SmallWebRTC echo, model-free stages and tests | Backend issues |
 | `web/` | Browser client: Vite and TypeScript scaffold, local WebRTC config and tests | UI issues |
 | `persona/` | Ames character sheet and system prompt, versioned | Persona, tone, or guardrail issues |
-| `evals/` (planned) | Frozen eval sets and runners (persona, crisis, memory, latency) | Any change that can move an eval score |
+| `evals/` | Frozen eval sets and runners (persona, crisis, memory, latency) | Any change that can move an eval score |
 | `.github/` | PR template and CI workflows | Opening a PR or changing CI |
 | `.githooks/` | Local git hooks (blocks pushes to main) | Never edit without an issue |
 
