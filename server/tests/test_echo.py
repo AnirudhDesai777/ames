@@ -75,6 +75,8 @@ async def test_server_ice_servers_are_empty():
     connection = echo_connection()
     try:
         assert connection.ice_servers == []
+        # aiortc has no public configuration getter; None enables its default STUN server.
+        assert vars(connection.pc)["_RTCPeerConnection__configuration"].iceServers == []
     finally:
         await connection.disconnect()
 
@@ -82,8 +84,16 @@ async def test_server_ice_servers_are_empty():
 async def test_failed_pipeline_setup_closes_connection(monkeypatch):
     monkeypatch.delenv("AMES_STUB", raising=False)
     connection = echo_connection()
+    messages = []
+
+    def receive(message):
+        messages.append((message, connection.pc.connectionState))
+
+    monkeypatch.setattr(connection, "send_app_message", receive)
     with pytest.raises(RuntimeError, match="AMES_STUB=1"):
         await run_echo(connection)
+    assert messages[0][0]["data"]["code"] == "server_error"
+    assert messages[0][1] != "closed"
     assert connection.pc.connectionState == "closed"
 
 
