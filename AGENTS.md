@@ -22,7 +22,7 @@ Read this before searching. Paths marked (planned) do not exist yet; the first i
 | `docs/roadmap.md` | Work after v1: NVIDIA, web search, fine-tuning, duplex, cloning | Never build from it without an issue |
 | `docs/reviews/` | EGM review reports on the design and on PRs | Before changing a design decision |
 | `docs/architecture/` (planned) | C4 diagrams (Mermaid) | Before changing how components connect |
-| `server/` (planned) | Python server: Pipecat pipeline, STT, LLM, TTS, memory, HTTP API | Backend issues |
+| `server/` | Python server: Pipecat SmallWebRTC echo, model-free stages and tests | Backend issues |
 | `web/` (planned) | Browser client: Vite and TypeScript UI | UI issues |
 | `persona/` (planned) | Ames character sheet and system prompt, versioned | Persona, tone, or guardrail issues |
 | `evals/` (planned) | Frozen eval sets and runners (persona, crisis, memory, latency) | Any change that can move an eval score |
