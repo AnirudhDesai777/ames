@@ -22,10 +22,9 @@ DATA_DIR = Path.home() / "Library/Application Support/Ames"
 WEB_ROOT = Path(__file__).resolve().parent.parent / "web/dist"
 
 
-def write_token(data_dir: Path) -> str:
+def write_token(data_dir: Path, token: str):
     data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     data_dir.chmod(0o700)
-    token = secrets.token_urlsafe(32)
     with tempfile.NamedTemporaryFile(mode="w", dir=data_dir, delete=False) as file:
         path = Path(file.name)
         try:
@@ -35,7 +34,6 @@ def write_token(data_dir: Path) -> str:
             path.replace(data_dir / "token")
         finally:
             path.unlink(missing_ok=True)
-    return token
 
 
 class Session:
@@ -61,8 +59,7 @@ class Session:
                 await self.task
 
 
-def create_app(data_dir: Path = DATA_DIR, web_root: Path = WEB_ROOT) -> web.Application:
-    token = ""
+def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
     active = None
     lock = asyncio.Lock()
 
@@ -85,10 +82,8 @@ def create_app(data_dir: Path = DATA_DIR, web_root: Path = WEB_ROOT) -> web.Appl
         return await handler(request)
 
     async def lifecycle(app):
-        nonlocal token
         if os.environ.get("AMES_STUB") != "1":
             raise RuntimeError("S1b supports only the echo stubs. Set AMES_STUB=1.")
-        token = write_token(data_dir)
         yield
         async with lock:
             if active:
@@ -161,12 +156,14 @@ def main():
     # Library debug logs can include SDP or data-channel messages.
     logger.remove()
     logger.add(sys.stderr, level="ERROR", format="{message}")
+    token = secrets.token_urlsafe(32)
 
     def open_client(message):
-        token = (DATA_DIR / "token").read_text()
+        # aiohttp calls this only after every listener has bound successfully.
+        write_token(DATA_DIR, token)
         webbrowser.get("open -a 'Google Chrome' %s").open(f"http://127.0.0.1:8765/#t={token}")
 
-    app = create_app()
+    app = create_app(token)
     try:
         web.run_app(app, host="127.0.0.1", port=8765, access_log=None, print=open_client)
     except OSError as error:

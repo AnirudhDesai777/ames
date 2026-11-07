@@ -1,5 +1,6 @@
 import asyncio
 import json
+import secrets
 import stat
 from unittest.mock import AsyncMock, Mock
 
@@ -20,8 +21,9 @@ async def client(tmp_path, monkeypatch):
     (web_root / "index.html").write_text('<script src="/assets/app.js"></script>')
     (web_root / "assets").mkdir()
     (web_root / "assets/app.js").write_text("// bundled client")
-    async with TestClient(TestServer(create_app(tmp_path / "data", web_root))) as client:
-        client.token = (tmp_path / "data/token").read_text()
+    token = secrets.token_urlsafe(32)
+    async with TestClient(TestServer(create_app(token, web_root))) as client:
+        client.token = token
         yield client
 
 
@@ -102,9 +104,11 @@ async def test_page_and_assets_are_public_and_contain_no_token(client):
 
 def test_token_rotates_and_has_private_permissions(tmp_path):
     data_dir = tmp_path / "data"
-    first = write_token(data_dir)
+    first = secrets.token_urlsafe(32)
+    write_token(data_dir, first)
     (data_dir / "token").chmod(0o644)
-    second = write_token(data_dir)
+    second = secrets.token_urlsafe(32)
+    write_token(data_dir, second)
     assert first != second
     assert len(second) >= 32
     assert (data_dir / "token").read_text() == second
@@ -232,7 +236,9 @@ async def test_real_offer_rtvi_and_session_replaced(client, monkeypatch):
 
 def test_startup_opens_chrome_with_token_only_in_fragment(tmp_path, monkeypatch):
     monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
-    token = write_token(tmp_path)
+    token = secrets.token_urlsafe(32)
+    monkeypatch.setattr(app_module.secrets, "token_urlsafe", Mock(return_value=token))
+    write_token(tmp_path, "old token")
     browser = Mock()
     monkeypatch.setattr(app_module.webbrowser, "get", Mock(return_value=browser))
     monkeypatch.setattr(app_module.os, "umask", Mock())
@@ -243,7 +249,9 @@ def test_startup_opens_chrome_with_token_only_in_fragment(tmp_path, monkeypatch)
         assert kwargs["host"] == "127.0.0.1"
         assert kwargs["port"] == 8765
         assert kwargs["access_log"] is None
+        assert (tmp_path / "token").read_text() == "old token"
         kwargs["print"]("Listening")
+        assert (tmp_path / "token").read_text() == token
 
     monkeypatch.setattr(app_module.web, "run_app", serve)
     app_module.main()
@@ -251,12 +259,18 @@ def test_startup_opens_chrome_with_token_only_in_fragment(tmp_path, monkeypatch)
     browser.open.assert_called_once_with(f"http://127.0.0.1:8765/#t={token}")
 
 
-def test_port_in_use_reports_port_without_opening_browser(monkeypatch):
-    monkeypatch.setattr(app_module.web, "run_app", Mock(side_effect=OSError("Address in use")))
+def test_failed_bind_preserves_token_without_opening_browser(tmp_path, monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
+    monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
+    write_token(tmp_path, "live token")
+    bind = AsyncMock(side_effect=OSError("Address in use"))
+    monkeypatch.setattr(asyncio.BaseEventLoop, "create_server", bind)
     monkeypatch.setattr(app_module.webbrowser, "get", Mock())
     monkeypatch.setattr(app_module.os, "umask", Mock())
     monkeypatch.setattr(app_module.logger, "remove", Mock())
     monkeypatch.setattr(app_module.logger, "add", Mock())
     with pytest.raises(SystemExit, match="port 8765 is in use"):
         app_module.main()
+    bind.assert_awaited_once()
+    assert (tmp_path / "token").read_text() == "live token"
     app_module.webbrowser.get.assert_not_called()
