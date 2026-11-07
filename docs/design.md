@@ -124,7 +124,7 @@ HTTP endpoints on `http://127.0.0.1:8765`. Every endpoint checks `Host` (9.1). E
 
 | Method and path | Request | Response |
 |---|---|---|
-| `GET /` | none | The built client, with the session token embedded |
+| `GET /` | none | The built client. It holds no token; the token arrives in the URL fragment (9.1) |
 | `POST /api/offer` | WebRTC offer plus `"locale": navigator.language` | WebRTC answer |
 | `GET /api/health` | none | `{ "ready": bool, "tts": "orpheus" \| "kokoro", "models": [{ "role": str, "id": str, "loaded": bool }] }` |
 | `GET /api/memory` | none | `{ "facts": [{ "id": int, "subject": str, "predicate": str, "object": str, "created_at": str }] }`, newest first |
@@ -302,7 +302,9 @@ Threats in scope: web pages open in the user's browser, and other user accounts 
 - One listener: `127.0.0.1:8765`. The LLM runs in-process, so there is no second port.
 - Every request's `Host` must be `127.0.0.1:8765` or `localhost:8765` (blocks DNS rebinding).
 - Requests with an `Origin` other than the server's own are rejected. No CORS headers are sent.
-- `GET /` embeds a random token generated at startup. Every other endpoint requires it in `X-Ames-Token`. S1b confirms that the Pipecat client can send the header with the offer; if it cannot, the token goes in the offer body.
+- At startup the server generates a random token and writes it to `~/Library/Application Support/Ames/token` (mode 0600). `ames` opens Chrome at `http://127.0.0.1:8765/#t=<token>`. The URL fragment never reaches the server, and `GET /` serves the client without any token, so another account that requests `GET /` gets nothing it can use.
+- The client reads the token from the fragment, keeps it in `sessionStorage`, and removes it from the address bar. `ames open` reopens Chrome with the token from the file.
+- Every endpoint except `GET /` and static assets requires the token in `X-Ames-Token`. S1b confirms that the Pipecat client can send the header with the offer; if it cannot, the token goes in the offer body.
 - If port 8765 is in use, the server exits with a message naming the port.
 
 ### 9.2 Data and retention
@@ -332,7 +334,7 @@ Eval datasets live in `evals/<set>/` as JSONL. Results live in `docs/evals/`. Da
 
 Authoring: Claude Code drafts the prompts and labels; the maintainer reviews them and approves the freeze in #3's PR. The maintainer records the 30 latency WAV turns.
 
-Judge: a local model of a different family than every LLM candidate, at least 14B parameters, run on the reference machine. #3 names and pins it. CI runs every harness with a stub model and a stub judge.
+Candidates: Claude Code writes the LLM candidate list (3 or 4 small instruct models plus one 8B baseline, each with an MLX build) into issue #12 after a fresh check of current models, before E starts. Judge: a local model of a different family than every candidate, at least 14B parameters, run on the reference machine. E names and pins it. CI runs every harness with a stub model and a stub judge.
 
 Thresholds below are proposals. The maintainer confirms or changes them when approving #3's PR.
 
@@ -420,7 +422,8 @@ v1 ships when all of these pass, and launch checklist #10 is complete:
 ```text
 uv tool install ames-voice     # package name; the command is `ames`
 ames setup                     # downloads pinned models, checks hashes
-ames                           # starts the server and opens Chrome at 127.0.0.1:8765
+ames                           # starts the server and opens Chrome with the token (9.1)
+ames open                      # reopens Chrome for a running server
 ames uninstall                 # removes models and data
 ```
 
@@ -438,7 +441,7 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 | Slice | Owner | Scope | Depends on | Acceptance |
 |---|---|---|---|---|
 | S1 | Codex | Repo layout, lockfiles, stubs, CI, Pipecat SmallWebRTC echo | none | Agent: a WAV fixture through the stub pipeline comes back non-silent |
-| S1b | Codex | HTTP app: `GET /`, token, Host/Origin checks, health, RTVI emitters with stub values, single session | S1 | Agent: Host, Origin, token, and session-replaced tests |
+| S1b | Codex | HTTP app: `GET /`, token, Host/Origin checks, health, RTVI emitters with stub values, single session | S1 | Agent: Host, Origin, token, session-replaced tests; `GET /` response contains no token |
 | P | CC, approved by M | `persona/ames.md`: character, advice rules, control-token and crisis instructions | none | M approves the PR |
 | R | M | `resources.json` contents from verified sources | none | M approves the PR |
 | E | CC, approved by M | Eval datasets and runners (#3) | none | Agent: runners pass with stubs. M: freeze approved |
@@ -478,7 +481,7 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 |---|---|---|
 | Is a 16 GB Apple Silicon Mac available for S8? If not, the minimum is 24 GB. | S8, README | Before S8 |
 
-Deferred to named slices: the judge model (E), the final tag list (S2b), extraction fallback (S5b, then D).
+Deferred to named slices: the LLM candidate list (issue #12, before E), the judge model (E), the final tag list (S2b), extraction fallback (S5b, then D).
 
 ## 16. Glossary
 
