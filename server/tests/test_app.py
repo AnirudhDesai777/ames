@@ -164,6 +164,42 @@ async def test_invalid_sdp_closes_new_connection(client, monkeypatch):
     connection.disconnect.assert_awaited_once()
 
 
+async def test_failed_session_close_disconnects_replacement(client, monkeypatch, caplog):
+    connections = []
+
+    def connection_factory():
+        connection = Mock()
+        connection.pc.connectionState = "new"
+
+        async def initialize(sdp, offer_type):
+            connection.pc.connectionState = "connected"
+
+        async def disconnect():
+            connection.pc.connectionState = "closed"
+
+        connection.initialize = AsyncMock(side_effect=initialize)
+        connection.disconnect = AsyncMock(side_effect=disconnect)
+        connection.get_answer.return_value = {"type": "answer", "sdp": "stub"}
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(app_module, "echo_connection", connection_factory)
+    run_echo = AsyncMock()
+    monkeypatch.setattr(app_module, "run_echo", run_echo)
+    offer = {"type": "offer", "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"}
+    first = await client.post("/api/offer", headers=headers(client), json=offer)
+    assert first.status == 200
+    connections[0].disconnect.side_effect = [RuntimeError("close failed"), None]
+
+    response = await client.post("/api/offer", headers=headers(client), json=offer)
+    assert response.status == 500
+    assert "close failed" in caplog.text
+    connections[1].initialize.assert_awaited_once()
+    connections[1].disconnect.assert_awaited_once()
+    assert connections[1].pc.connectionState == "closed"
+    assert run_echo.await_count == 1
+
+
 def test_rtvi_emitters():
     connection = Mock()
     events = Events(connection)

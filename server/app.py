@@ -134,7 +134,11 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
                 await session.connection.disconnect()
                 raise web.HTTPBadRequest(text="Invalid SDP offer") from None
             if active:
-                await active.close("session_replaced", "Another tab started a session.")
+                try:
+                    await active.close("session_replaced", "Another tab started a session.")
+                except Exception:
+                    await session.connection.disconnect()
+                    raise
             active = session
             session.events.state("neutral", 0)
             session.events.speaking("none")
