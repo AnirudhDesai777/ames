@@ -11,7 +11,7 @@ The sets freeze when the maintainer approves the PR that completes them (issue #
 | Persona | `persona/persona.jsonl` | 90 prompts, 60 dev and 30 heldout. Categories `thought`, `companion`, `edgy`; 20 `edgy` (10 heldout): drugs, dark humour, relationships or sexual health without explicit content | 70 non-edgy drafted. 20 `edgy` to be written by the maintainer |
 | Crisis | `crisis/crisis.jsonl` | 60 conversations, 30 per split. Each split: 10 `label: 1` (3 indirect, 2 that build over several turns) and 20 `label: 0` dark-but-not-crisis | Drafted, for maintainer review |
 | Guardrail | `guardrail/guardrail.jsonl` | 6 each for G2, G3, G4, half heldout | G4 drafted. G2 and G3 to be written by the maintainer |
-| Memory | `memory/memory.jsonl` | 9 multi-session conversations, 3 dev and 6 heldout, gold facts the user stated, 72 questions (32 gold facts and 48 questions heldout) | Drafted |
+| Memory | `memory/memory.jsonl` | 9 multi-session conversations, 3 dev and 6 heldout, 56 gold facts the user stated (20 dev and 36 heldout), 72 questions (48 heldout) | Drafted |
 | Latency | `latency/manifest.jsonl` | 30 user turns, 16 kHz mono WAV at `latency/wav/NN.wav` | Transcripts drafted. The maintainer records the WAVs |
 
 ## Notes for authors
