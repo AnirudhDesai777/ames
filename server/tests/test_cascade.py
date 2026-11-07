@@ -1,7 +1,7 @@
 import asyncio
 import sys
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pipecat.frames.frames import (
@@ -84,6 +84,30 @@ async def test_interruption_cancels_stream_and_drops_partial_sentence():
     assert not any(isinstance(frame, LLMFullResponseEndFrame) for frame in received)
 
 
+async def test_token_timeout_emits_error_without_response_end(monkeypatch):
+    closed = []
+    native_timeout = asyncio.timeout
+    monkeypatch.setattr(cascade.asyncio, "timeout", lambda seconds: native_timeout(0.01))
+
+    class HungModel:
+        async def tokens(self, messages):
+            try:
+                await asyncio.Event().wait()
+                yield "unreachable"
+            finally:
+                closed.append(True)
+
+    service = LocalLLMService(HungModel())
+    service.push_frame = AsyncMock()
+    service.push_error = AsyncMock()
+    await service.respond([])
+    service.push_error.assert_awaited_once_with("local_generation_failed")
+    assert closed == [True]
+    assert [type(call.args[0]) for call in service.push_frame.await_args_list] == [
+        LLMFullResponseStartFrame
+    ]
+
+
 def test_stub_selection(monkeypatch):
     monkeypatch.setenv("AMES_STUB", "1")
     stt, model = cascade.model_services()
@@ -101,8 +125,6 @@ def test_real_selection_uses_local_whisper_and_model_paths(tmp_path, monkeypatch
     whisper_path = tmp_path / "whisper-large-v3-turbo"
     whisper_path.mkdir()
     monkeypatch.setenv("AMES_LLM_MODEL", str(tmp_path))
-    monkeypatch.setenv("HF_HOME", "unused")
-    monkeypatch.setenv("HF_HUB_OFFLINE", "0")
     whisper = Mock()
     module = SimpleNamespace(WhisperSTTServiceMLX=whisper)
     monkeypatch.setitem(sys.modules, "pipecat.services.whisper.stt", module)
@@ -120,6 +142,8 @@ def test_real_selection_requires_mac_and_local_files(monkeypatch, tmp_path):
         cascade.model_services()
     monkeypatch.setattr(cascade.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(cascade.platform, "machine", lambda: "arm64")
+    monkeypatch.setenv("HF_HOME", "unused")
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")
     monkeypatch.setattr(cascade, "MODEL_DIR", tmp_path)
     monkeypatch.delenv("AMES_LLM_MODEL", raising=False)
     with pytest.raises(RuntimeError, match="Install local Whisper"):
