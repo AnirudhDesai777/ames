@@ -170,16 +170,20 @@ class Repository:
             ).fetchone()
             if target is None or target[0] not in OBJECT_TYPES[predicate]:
                 raise ValueError("Invalid object entity for predicate")
+        replaced = 0
         if predicate in FUNCTIONAL:
-            self.connection.execute(
+            replaced = self.connection.execute(
                 "DELETE FROM relation WHERE subject_id = ? AND predicate = ?",
                 (subject_id, predicate),
-            )
-        return self.connection.execute(
+            ).rowcount
+        relation_id = self.connection.execute(
             "INSERT INTO relation(subject_id, predicate, object_id, value, created_at) "
             "VALUES (?, ?, ?, ?, ?)",
             (subject_id, predicate, object_id, value, created_at or now()),
         ).lastrowid
+        if replaced:
+            self.sweep_orphans_in_transaction()
+        return relation_id
 
     def list_relations(self) -> list[sqlite3.Row]:
         return self.connection.execute(
@@ -197,12 +201,15 @@ class Repository:
         deleted = self.connection.execute(
             "DELETE FROM relation WHERE id = ?", (relation_id,)
         ).rowcount
+        self.sweep_orphans_in_transaction()
+        self.connection.execute("UPDATE delete_epoch SET n = n + 1")
+        return bool(deleted)
+
+    def sweep_orphans_in_transaction(self) -> None:
         self.connection.execute(
             "DELETE FROM entity WHERE id <> 1 AND NOT EXISTS "
             "(SELECT 1 FROM relation WHERE subject_id = entity.id OR object_id = entity.id)"
         )
-        self.connection.execute("UPDATE delete_epoch SET n = n + 1")
-        return bool(deleted)
 
     def delete_everything(self) -> None:
         with self.connection:

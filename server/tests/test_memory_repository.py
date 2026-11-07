@@ -202,6 +202,27 @@ def test_failed_replacement_rolls_back_the_old_fact(repository):
     assert [row["value"] for row in repository.list_relations()] == ["calm"]
 
 
+@pytest.mark.parametrize("shared", [False, True])
+def test_replacement_sweeps_old_object_and_aliases_unless_still_related(repository, shared):
+    old = repository.add_entity("Place", "old home")
+    new = repository.add_entity("Place", "new home")
+    repository.add_alias("previous home", old)
+    repository.add_alias("current home", new)
+    repository.add_relation(1, "lives_in", object_id=old)
+    if shared:
+        repository.add_relation(1, "related_to", object_id=old)
+
+    repository.add_relation(1, "lives_in", object_id=new)
+
+    entities = {row[0] for row in repository.connection.execute("SELECT id FROM entity")}
+    aliases = {tuple(row) for row in repository.connection.execute("SELECT * FROM alias")}
+    assert entities == ({1, old, new} if shared else {1, new})
+    assert aliases == (
+        {("previous home", old), ("current home", new)} if shared else {("current home", new)}
+    )
+    assert repository.delete_epoch() == 0
+
+
 def test_multi_relations_coexist_and_list_newest_first(repository):
     repository.add_relation(1, "likes", value="tea", created_at="2026-11-06T00:00:00+00:00")
     repository.add_relation(1, "likes", value="coffee", created_at="2026-11-07T00:00:00+00:00")
