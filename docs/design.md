@@ -1,6 +1,6 @@
 # Ames v1: Design Doc
 
-Version: 4 (2026-11-07). Resolves `docs/reviews/design-review-1.md` and `docs/reviews/design-review-2.md`. v4 replaces sticky crisis mode with a crisis exit, drops the Kokoro fallback, and sets the minimum to 24 GB.
+Version: 4 (2026-11-07). Resolves `docs/reviews/design-review-1.md` and `docs/reviews/design-review-2.md`. v4 replaces sticky crisis mode with a crisis exit, picks STT and TTS by a voice bake-off with no fallback voice, and sets the minimum to 24 GB.
 Later work (v1.x, v1.1, duplex, voice cloning, preference tuning) lives in `docs/roadmap.md`.
 
 ## 1. Problem and summary
@@ -46,7 +46,7 @@ Decided by the maintainer and not open for review. This table is the copy of rec
 | Content | No topic refusals and no age gate. |
 | Guardrails | Exactly five, listed in 8.3. |
 | Crisis | On a crisis turn she says one fixed line pointing to local emergency services, then the session ends (8.4). No hotline lists or phone numbers. |
-| TTS | Orpheus only. No fallback voice; a Mac too slow for Orpheus is unsupported. |
+| STT and TTS | Chosen by the voice bake-off (slice S2b) on measured numbers, not reputation. One TTS, no fallback voice; a Mac too slow for it is unsupported. |
 | Minimum RAM | 24 GB. A smaller LLM leaves more of it for the KV cache. |
 | Advisory | First run shows a notice: Ames is an AI with no cloud monitoring, nobody can guarantee what she says, take it with a grain of salt. |
 | License | Apache-2.0 for the code. Users download the models; Ames does not redistribute them. |
@@ -54,7 +54,7 @@ Decided by the maintainer and not open for review. This table is the copy of rec
 ## 4. Hardware
 
 - Reference machine: MacBook Pro, Apple M4 Pro, 24 GB. All latency targets are measured here.
-- Supported minimum: Apple Silicon with 24 GB, on a chip that passes the Orpheus startup self-test (section 11). No 16 GB machine is available to test, so 16 GB is not claimed. There is one model set; there is no reduced profile.
+- Supported minimum: Apple Silicon with 24 GB, on a chip that passes the TTS startup self-test (section 11). No 16 GB machine is available to test, so 16 GB is not claimed. There is one model set; there is no reduced profile.
 
 ## 5. Architecture
 
@@ -64,18 +64,18 @@ Decided by the maintainer and not open for review. This table is the copy of rec
 Chrome (web/)                          Python server (server/, one process)
   mic -> WebRTC audio  ---------------> SmallWebRTCTransport (iceServers empty)
                                          Silero VAD + Smart Turn v3
-                                         Whisper large-v3-turbo (MLX)        STT
+                                         STT chosen in S2b (MLX)             STT
                                          prompt assembly + memory retrieval
                                          in-process mlx-lm service            LLM
                                          control-token parser + tag sanitizer
-                                         Orpheus (MLX)                        TTS
+                                         TTS chosen in S2b (MLX)              TTS
   speaker <- WebRTC audio <------------- SmallWebRTCTransport
   UI <- RTVI events (data channel) <---- transcript, speaking, state, notice
   UI <-> HTTP 127.0.0.1:8765 <---------> page, offer, health, memory
                                          idle-time memory extraction
 ```
 
-Pipecat (pinned in S1) provides the transport, VAD, Smart Turn v3, Whisper MLX STT, interruption handling, and RTVI events. We write: the HTTP app, the mlx-lm LLM service, prompt assembly, the control-token parser and tag sanitizer, the Orpheus TTS service, memory, and the UI.
+Pipecat (pinned in S1) provides the transport, VAD, Smart Turn v3, Whisper MLX STT (used until S2b picks), interruption handling, and RTVI events. We write: the HTTP app, the mlx-lm LLM service, prompt assembly, the control-token parser and tag sanitizer, the TTS service for the chosen model (Pipecat has no MLX TTS service), an STT service if S2b picks a model Pipecat lacks, memory, and the UI.
 
 The LLM service calls `mlx_lm` directly inside the server process. It keeps two prompt caches: one for the conversation and one for extraction, so extraction never evicts the conversation cache. Generation checks a cancel flag between tokens, so a barge-in or user speech stops GPU work within one token.
 
@@ -248,7 +248,7 @@ Every reply starts with a control token, which the server strips before any text
 
 - `mood` is one of the six `Mood` values. `crisis` is `0` or `1`.
 - If the token is missing or malformed: mood is `neutral` and crisis is treated as `0`. An error code is logged, never the text. The crisis gate (10.2) allows zero malformed tokens.
-- Allowed inline tags: `<laugh>`, `<chuckle>`, `<sigh>`, `<gasp>`, `<groan>`, `<yawn>`. S2b checks these against Orpheus. If any is unsupported, S2b's PR edits this list.
+- Allowed inline tags: `<laugh>`, `<chuckle>`, `<sigh>`, `<gasp>`, `<groan>`, `<yawn>`. These are placeholders. S2b's PR replaces this list with the tags the chosen TTS renders. If it takes emotion as a text instruction instead of tags, the PR maps each `Mood` to an instruction here.
 - The parser is streaming-aware: it buffers a partial `<...` across chunks and runs before the sentence splitter. Unknown tags and `*laughs*`-style actions are removed.
 - Tags never appear in the visible transcript.
 
@@ -396,7 +396,7 @@ v1 ships when all of these pass, and launch checklist #10 is complete:
 | Model missing or wrong size | Size check at startup | Server does not start | "Run `ames setup` again" |
 | Not enough memory to load models | Load error | Server stops | The RAM requirement |
 | LLM generation hangs | No token for 10 s | Generation cancelled, reply dropped | `notice: server_error` |
-| Orpheus too slow | Real-time factor above 0.9 in the startup self-test | Server does not start | "This Mac is too slow for her voice" and the README minimum |
+| TTS too slow | Real-time factor above 0.9 in the startup self-test | Server does not start | "This Mac is too slow for her voice" and the README minimum |
 | Malformed control token | Parser | See section 7 | Nothing |
 | Malformed extraction JSON | Schema check | Retry once, then mark turn done | Nothing |
 | Port 8765 in use | Bind error | Server exits | The port and how to free it |
@@ -410,8 +410,8 @@ v1 ships when all of these pass, and launch checklist #10 is complete:
 |---|---|---|
 | Voice framework | Pipecat | LiveKit Agents: built around a hosted media server. Custom: rebuilds VAD, turn-taking, barge-in. |
 | LLM runtime | mlx-lm in-process | mlx-lm's HTTP server as a child: a second local listener to secure, less control over cache and cancel. Ollama: separate app. llama.cpp: the fine-tuning path is MLX. |
-| STT | Whisper large-v3-turbo MLX | Parakeet: needs a custom service; revisit only if Whisper misses its budget. |
-| TTS | Orpheus only | Kokoro only: fast but flat. Kokoro as fallback: a second voice path to build and test for machines below the minimum. |
+| STT | By bake-off (S2b): Whisper large-v3-turbo, Parakeet TDT 0.6B v2, Nemotron Speech Streaming EN 0.6B | Picking Whisper without measuring: the streaming models may beat it on latency and WER. |
+| TTS | By bake-off (S2b): Orpheus 3B, Chatterbox Turbo, Ming-3.0-tts 0.5B, Qwen3-TTS 1.7B, with Kokoro as a speed floor | OmniVoice and Higgs: non-commercial licenses. Fish: too large for 24 GB. Kokoro as fallback: a second voice path to build and test for machines below the minimum. |
 | Crisis detection | Control token from the same reply | Separate classifier: one more model on the critical path. |
 | Crisis response | Fixed line, then end the session | Sticky mode with per-country hotline lists: needs verified numbers per country and keeps the model in a conversation it should not lead. |
 | Memory store | SQLite triples | Vector store: fuzzy recall, no clean delete. |
@@ -446,15 +446,15 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 | S1b | Codex | HTTP app: `GET /`, token, Host/Origin checks, health, RTVI emitters with stub values, single session | S1 | Agent: Host, Origin, token, session-replaced tests; `GET /` response contains no token |
 | P | CC, approved by M | `persona/ames.md`: character, advice rules, control-token instructions, fixed crisis line | none | M approves the PR |
 | E | CC, approved by M | Eval datasets and runners (#3) | none | Agent: runners pass with stubs. M: freeze approved |
-| S2a | Codex | Cascade: Whisper MLX, mlx-lm service, stub TTS, plain prompt; latency harness | S1b | Agent: harness prints per-stage p50/p90 with stubs |
-| S2b | Codex | Orpheus real-time-factor script and tag check | S2a | M: results in `docs/evals/orpheus.md` |
-| L1 | CC | Pins and licenses for STT, TTS, VAD, Smart Turn models | S2b | `docs/models.md` rows with ID, revision, hash, license |
+| S2a | Codex | Cascade: Whisper MLX (Pipecat's service), mlx-lm service, stub TTS, plain prompt; latency harness | S1b | Agent: harness prints per-stage p50/p90 with stubs |
+| S2b | Codex runs, M confirms | Voice bake-off: STT and TTS candidates (section 12) on WER, latency, real-time factor, peak RAM with the LLM loaded, tag rendering; blind listening test | S2a, latency WAVs | M: `docs/evals/voice-bakeoff.md`, choice recorded in section 3 |
+| L1 | CC | Pins and licenses for the chosen STT and TTS, VAD, Smart Turn models | S2b | `docs/models.md` rows with ID, revision, hash, license |
 | S3a | Codex | Control-token parser and tag sanitizer (pure functions) | S1 | Agent: chunk-boundary and malformed-token tests |
 | S3b | Codex | Prompt assembly: stable prefix, 3000-token history, late block | S3a, P | Agent: prefix-stability and history-cap tests |
 | B | Codex runs, M confirms | LLM bake-off on held-out sets with the real prompt; persona gate | E, S2a, S3b | M: `docs/evals/llm-bakeoff.md`, choice recorded in section 3 |
 | L2 | CC | Pins and licenses for the chosen LLM and the judge | B | `docs/models.md` rows added |
 | D | Codex, conditional | Distillation, only if B finds no passing model | B | Re-run B gates pass |
-| S3c | Codex | Orpheus TTS service, startup self-test, barge-in truncation | S3a, L1 | Agent: self-test refusal and truncation tests with stub TTS. M: echo test |
+| S3c | Codex | TTS service for the chosen model, startup self-test, barge-in truncation | S3a, L1 | Agent: self-test refusal and truncation tests with stub TTS. M: echo test |
 | S4 | Codex | UI: orb, transcript, mute, end, advisory, session-ended notice (Chrome) | S1b, S3a | Agent: component tests for each element |
 | S5a | Codex | Memory schema, repository, deletes, retention | S1 | Agent: repository, cascade, and retention tests |
 | S5b | Codex | Idle-time extraction with epoch check | S5a, B | Agent: extraction and delete-during-extraction tests with stub LLM |
@@ -470,9 +470,9 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| Orpheus too slow on base M-series chips | Those Macs are unsupported | S2b measures early; the README states the minimum |
+| Chosen TTS too slow on base M-series chips | Those Macs are unsupported | S2b measures early; the README states the minimum |
 | Small LLM fails persona or crisis gates | Bad character or unsafe crisis handling | Bake-off by numbers; slice D |
-| Orpheus license (Llama-based) limits use | No voice until the maintainer picks another TTS | L1 before S3c |
+| TTS license limits use | No voice until the maintainer picks another TTS | S2b drops non-commercial licenses; L1 checks the winner before S3c |
 | Extraction writes false memories | Wrong facts said with confidence | User-only extraction, precision gate, visible panel |
 | A web page reaches the local server | Memory read or wiped | 9.1 |
 
@@ -480,7 +480,7 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 
 None open.
 
-Deferred to named slices: the LLM candidate list (issue #12, before E), the judge model (E), the final tag list (S2b), extraction fallback (S5b, then D).
+Deferred to named slices: the LLM candidate list (issue #12, before E), the judge model (E), the STT and TTS choice and the final tag list (S2b), extraction fallback (S5b, then D).
 
 ## 16. Glossary
 
