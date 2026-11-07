@@ -16,6 +16,7 @@ from evals.scoring import (
 )
 from evals.stubs import stub_extractor, stub_judge, stub_model
 from server.control_tokens import ParserState, parse_chunk
+from server.prompt import load_system_prompt as system_prompt
 
 ROOT = Path(__file__).resolve().parent
 SETS = ("persona", "crisis", "guardrail", "memory")
@@ -25,12 +26,6 @@ EXTRACTION_PROMPT = (
     "sarcasm and study material. Return only a JSON list of triples with string keys "
     "subject, predicate and object. Use user as the subject for facts about the user."
 )
-
-
-def system_prompt() -> str:
-    text = (ROOT.parent / "persona/ames.md").read_text()
-    section = text.split("## System prompt\n", 1)[1].split("\n## ", 1)[0]
-    return section.split("```text\n", 1)[1].split("```", 1)[0]
 
 
 def messages_for(prompt: str, turns: list[dict]) -> list[dict[str, str]]:
