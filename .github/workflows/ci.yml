@@ -30,6 +30,7 @@ jobs:
           for eval_set in persona crisis guardrail memory; do
             for split in dev heldout; do
               uv run --locked python -m evals.run "$eval_set" --split "$split" \
+                --repeats 1 \
                 --out "$RUNNER_TEMP/evals/$eval_set-$split.json"
             done
           done

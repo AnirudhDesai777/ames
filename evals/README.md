@@ -40,13 +40,17 @@ uv run --locked python -m evals.run persona --split dev --out /tmp/persona-dev.j
 uv run --locked python -m evals.run crisis --split heldout --out /tmp/crisis-heldout.json
 uv run --locked python -m evals.run guardrail --split dev --out /tmp/guardrail-dev.json
 uv run --locked python -m evals.run memory --split dev --out /tmp/memory-dev.json
-uv run --locked python -m evals.run memory --split heldout --out /tmp/memory-heldout.json
+uv run --locked python -m evals.run memory --split heldout --repeats 3 --out /tmp/memory-heldout.json
 uv run --locked pytest -q evals/tests
 ```
 
-The CLI always uses the fixed model, judge and extractor in `evals/stubs.py`. No model downloads, network, GPU, microphone or browser are needed. CI runs every set with both split selections and prints each metric. Latency belongs to S2a and is not part of this command.
+The CLI always uses the fixed model, judge and extractor in `evals/stubs.py`. No model downloads, network, GPU, microphone or browser are needed. CI runs every set with both split selections at `--repeats 1` and prints each metric. Latency belongs to S2a and is not part of this command.
 
 The command prints metrics and PASS or FAIL against the proposed thresholds in `evals/scoring.py`. The JSON file includes counts, metrics, gates and per-case scores, without conversation or reply text. Exit code 0 means the evaluation completed, even if a score gate failed; errors reading inputs, judging or writing results exit nonzero. Consumers that need a score gate must check the JSON `status`.
+
+`--repeats N` runs the selected set and split N times (a positive integer, default 1). Console output reports each run's metrics and their arithmetic mean; the final gates and status use the mean. If any run has no observations for a metric, its mean is `null` and fails its gate. JSON `runs` contains each run's counts, metrics, gates and cases; top-level `metrics`, `gates` and `status` describe the mean. A single run also keeps top-level `counts` and `cases` for existing consumers.
+
+Heldout gates use `--repeats 3`. Repeats only reduce sampling noise when the model samples (temperature above 0); deterministic models and the fixed stubs repeat the same results.
 
 Stubs test the harness, not model quality. The model always emits a valid neutral, non-crisis token, so crisis recall is zero. The judge always gives four persona scores of 4, no refusal, and yes for other decisions. The extractor returns one fixed triple. These choices deliberately produce failing quality gates. No gold labels or expected answers are passed to the model or extractor.
 

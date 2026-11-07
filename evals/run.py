@@ -4,6 +4,7 @@ import argparse
 import json
 from collections.abc import Callable
 from pathlib import Path
+from statistics import mean
 
 from evals.scoring import (
     CRITERIA,
@@ -222,33 +223,7 @@ def memory_case(row, prompt, model, judge, extractor, extraction_prompt):
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("set", choices=SETS)
-    parser.add_argument("--split", choices=("dev", "heldout"), required=True)
-    parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--extraction-prompt", type=Path, help="UTF-8 extraction prompt file")
-    args = parser.parse_args()
-    try:
-        rows = [
-            json.loads(line)
-            for line in (ROOT / args.set / f"{args.set}.jsonl").read_text().splitlines()
-            if line.strip()
-        ]
-        result = evaluate(
-            args.set,
-            rows,
-            split=args.split,
-            extraction_prompt=(
-                args.extraction_prompt.read_text() if args.extraction_prompt else EXTRACTION_PROMPT
-            ),
-        )
-        result["backend"] = "stub"
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
-    except (OSError, ValueError) as error:
-        parser.exit(2, f"eval error: {error}\n")
-    print(f"{result['set']} split={result['split']} backend=stub counts={result['counts']}")
+def print_metrics(result: dict) -> None:
     for metric, value in result["metrics"].items():
         shown = "no observations" if value is None else value
         gate = result["gates"].get(metric)
@@ -259,6 +234,64 @@ def main() -> None:
         )
         print(f"{metric}: {shown}{suffix}")
     print(result["status"])
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("set", choices=SETS)
+    parser.add_argument("--split", choices=("dev", "heldout"), required=True)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--extraction-prompt", type=Path, help="UTF-8 extraction prompt file")
+    parser.add_argument("--repeats", type=int, default=1, help="number of runs (default: 1)")
+    args = parser.parse_args()
+    if args.repeats < 1:
+        parser.error("--repeats must be at least 1")
+    try:
+        rows = [
+            json.loads(line)
+            for line in (ROOT / args.set / f"{args.set}.jsonl").read_text().splitlines()
+            if line.strip()
+        ]
+        extraction_prompt = (
+            args.extraction_prompt.read_text() if args.extraction_prompt else EXTRACTION_PROMPT
+        )
+        runs = [
+            evaluate(args.set, rows, split=args.split, extraction_prompt=extraction_prompt)
+            for run in range(args.repeats)
+        ]
+        metrics = {
+            metric: None
+            if any(run["metrics"][metric] is None for run in runs)
+            else mean(run["metrics"][metric] for run in runs)
+            for metric in runs[0]["metrics"]
+        }
+        gate_results = gates(args.set, metrics)
+        result = {
+            "set": args.set,
+            "split": args.split,
+            "requested_split": args.split,
+            "backend": "stub",
+            "repeats": args.repeats,
+            "runs": runs,
+            "metrics": metrics,
+            "gates": gate_results,
+            "status": "PASS"
+            if all(run["cases"] for run in runs)
+            and all(gate["passed"] for gate in gate_results.values())
+            else "FAIL",
+        }
+        if args.repeats == 1:
+            result.update(counts=runs[0]["counts"], cases=runs[0]["cases"])
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
+    except (OSError, ValueError) as error:
+        parser.exit(2, f"eval error: {error}\n")
+    print(f"{result['set']} split={result['split']} backend=stub repeats={args.repeats}")
+    for index, run in enumerate(runs, start=1):
+        print(f"run {index}/{args.repeats} counts={run['counts']}")
+        print_metrics(run)
+    print(f"mean ({args.repeats} runs)")
+    print_metrics(result)
 
 
 if __name__ == "__main__":
