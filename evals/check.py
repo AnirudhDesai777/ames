@@ -27,7 +27,7 @@ TARGETS = {
         f"{r}/{s}": 3 for r in ("G2", "G3", "G4") for s in ("dev", "heldout")
     }),
     "memory": ("memory/memory.jsonl", {"id", "split", "sessions", "gold_facts", "questions"}, {
-        "conversations": 5, "questions": 40, "dev": 3, "heldout": 2,
+        "conversations": 9, "questions": 72, "dev": 3, "heldout": 6,
     }),
     "latency": ("latency/manifest.jsonl", {"id", "wav", "transcript"}, {"turns": 30}),
 }

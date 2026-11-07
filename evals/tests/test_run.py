@@ -4,6 +4,7 @@ import sys
 
 import pytest
 
+from evals import run
 from evals.run import ROOT, SETS, evaluate, system_prompt
 from evals.scoring import CRITERIA
 
@@ -20,10 +21,22 @@ def persona_row(**changes):
 
 @pytest.mark.parametrize("name", SETS)
 @pytest.mark.parametrize("split", ["dev", "heldout"])
-def test_cli_runs_current_partial_data_with_stubs(name, split, tmp_path):
+@pytest.mark.parametrize("repeats", [1, 3])
+def test_cli_runs_current_partial_data_with_stubs(name, split, repeats, tmp_path):
     output = tmp_path / name / f"{split}.json"
     completed = subprocess.run(
-        [sys.executable, "-m", "evals.run", name, "--split", split, "--out", str(output)],
+        [
+            sys.executable,
+            "-m",
+            "evals.run",
+            name,
+            "--split",
+            split,
+            "--repeats",
+            str(repeats),
+            "--out",
+            str(output),
+        ],
         cwd=ROOT.parent,
         capture_output=True,
         text=True,
@@ -35,7 +48,17 @@ def test_cli_runs_current_partial_data_with_stubs(name, split, tmp_path):
     assert result["requested_split"] == split
     assert f"split={split}" in completed.stdout
     assert result["backend"] == "stub"
-    assert result["cases"]
+    assert result["repeats"] == repeats
+    assert len(result["runs"]) == repeats
+    assert completed.stdout.count("mean (") == 1
+    for index, single in enumerate(result["runs"], start=1):
+        assert f"run {index}/{repeats} counts=" in completed.stdout
+        assert single["cases"]
+        assert single["metrics"] == result["metrics"]
+    single = result["runs"][0]
+    if repeats == 1:
+        assert result["counts"] == single["counts"]
+        assert result["cases"] == single["cases"]
     assert result["metrics"]["malformed"] == 0
     for metric in result["metrics"]:
         assert f"{metric}:" in completed.stdout
@@ -57,11 +80,96 @@ def test_cli_runs_current_partial_data_with_stubs(name, split, tmp_path):
             else [
                 "memory-004",
                 "memory-005",
+                "memory-006",
+                "memory-007",
+                "memory-008",
+                "memory-009",
             ]
         )
-        assert [case["id"] for case in result["cases"]] == ids
-        assert result["counts"]["conversations"] == len(ids)
-        assert result["counts"]["questions"] == (24 if split == "dev" else 16)
+        assert [case["id"] for case in single["cases"]] == ids
+        assert single["counts"]["conversations"] == len(ids)
+        assert single["counts"]["questions"] == (24 if split == "dev" else 48)
+
+
+@pytest.mark.parametrize(
+    "extra_facts, expected_status",
+    [([0, 0, 1], "PASS"), ([1, 1, 0], "FAIL")],
+)
+def test_cli_repeats_three_times_and_gates_on_mean(
+    extra_facts, expected_status, tmp_path, monkeypatch, capsys
+):
+    facts = [{"subject": "user", "predicate": "likes", "object": str(i)} for i in range(3)]
+    row = {
+        "id": "m1",
+        "split": "heldout",
+        "sessions": [[{"role": "user", "text": "I like three things."}]],
+        "gold_facts": facts,
+        "questions": [{"q": "What do I like?", "answer": "Three things"}],
+    }
+    dataset = tmp_path / "memory" / "memory.jsonl"
+    dataset.parent.mkdir()
+    dataset.write_text(json.dumps(row))
+    monkeypatch.setattr(run, "ROOT", tmp_path)
+    output = tmp_path / "result.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["evals.run", "memory", "--split", "heldout", "--repeats", "3", "--out", str(output)],
+    )
+    calls = []
+    extra_counts = iter(extra_facts)
+
+    def evaluate_sample(name, rows, **kwargs):
+        calls.append((name, rows, kwargs))
+        extras = facts[: next(extra_counts)]
+        extracted = facts + [fact | {"object": "wrong"} for fact in extras]
+        return evaluate(name, rows, **kwargs, extractor=lambda messages: json.dumps(extracted))
+
+    monkeypatch.setattr(run, "evaluate", evaluate_sample)
+    run.main()
+    result = json.loads(output.read_text())
+    assert len(calls) == 3
+    assert all(name == "memory" and rows == [row] for name, rows, kwargs in calls)
+    assert all(kwargs["split"] == "heldout" for name, rows, kwargs in calls)
+    assert len(result["runs"]) == 3
+    precisions = [3 / (3 + extra) for extra in extra_facts]
+    assert [single["metrics"]["precision"] for single in result["runs"]] == precisions
+    assert result["metrics"]["precision"] == pytest.approx(sum(precisions) / 3)
+    assert result["gates"]["precision"]["passed"] == (expected_status == "PASS")
+    assert result["status"] == expected_status
+    assert result["runs"][-1]["status"] != expected_status
+    shown = capsys.readouterr().out
+    assert shown.count("precision:") == 4
+    for index, precision in enumerate(precisions, start=1):
+        assert f"run {index}/3 counts=" in shown
+        assert f"precision: {precision}" in shown
+    assert f"mean (3 runs)\nprecision: {result['metrics']['precision']}" in shown
+    assert shown.rstrip().endswith(expected_status)
+
+
+@pytest.mark.parametrize("repeats", ["0", "-1", "1.5"])
+def test_cli_rejects_invalid_repeats(repeats, tmp_path):
+    output = tmp_path / "result.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "evals.run",
+            "memory",
+            "--split",
+            "heldout",
+            "--repeats",
+            repeats,
+            "--out",
+            str(output),
+        ],
+        cwd=ROOT.parent,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "--repeats" in result.stderr
+    assert not output.exists()
 
 
 def test_prompt_is_verbatim_and_turns_use_model_roles():
