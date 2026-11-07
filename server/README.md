@@ -114,6 +114,35 @@ interruption, and pipeline cancellation stop generation; a ten-second token
 timeout emits an error. A failed or incomplete turn produces no percentile
 report. No transcript or generated text is printed by the harness.
 
+## Conversation prompt assembly
+
+`server.prompt.PromptAssembler(count_tokens)` loads the fenced System prompt
+block from `persona/ames.md` verbatim once. Supply a function that counts text
+with the loaded LLM's tokenizer, for example
+`lambda text: len(tokenizer.encode(text, add_special_tokens=False))`. Tests use
+a simple counter and never load a tokenizer or model.
+
+Call `assemble(history, user_text, memory_facts="")` with only the current
+session's prior messages in the same `role`/`content` format used by
+`server.llm` and `server.cascade` (`user` or `assistant`). It returns the system
+prompt, the newest contiguous suffix of whole history messages fitting 3000
+content tokens, a system message containing the memory facts slot, and the
+newest user turn. An oversized history message and everything before it drop
+out; messages are never clipped. The cap excludes the persona, memory slot,
+newest user turn, and chat-template overhead.
+
+Changing memory facts affects only the late block. The persona and retained
+history stay byte-identical until old history drops off the front. The builder
+copies messages and stores no history; the caller owns session boundaries and
+supplies only completed spoken text. Retrieval and live pipeline wiring belong
+to S5c and W. The eval runner shares the persona loader.
+
+Run the prefix-stability and history-cap checks without models:
+
+```sh
+AMES_STUB=1 uv run --locked pytest -q server/tests/test_prompt.py
+```
+
 ## Streaming reply text
 
 `server.control_tokens.parse_chunk(state, text)` is a pure function. Start each
