@@ -4,64 +4,205 @@ Status: harness ready for maintainer validation. No hardware measurements, liste
 scores, model choice, or supported tag list have been established. Design sections
 3 and 7 remain unchanged.
 
-## Run the harness
+## Environment (from the repository root)
 
-From the repository root, after `uv sync --locked`, check the runner without models:
+Use Python 3.12 and uv on the reference M4 Pro Mac with 24 GB RAM. All commands
+below start at the repository root and use the same shell. Nothing in the stub
+check downloads or loads models:
 
 ```sh
-AMES_STUB=1 uv run --locked python -m evals.voice_bakeoff --out /tmp/ames-voice-stub
+uv sync --locked
+STUB_OUT="$(mktemp -d)/run"
+AMES_STUB=1 uv run --locked python -m evals.voice_bakeoff --out "$STUB_OUT"
 AMES_STUB=1 uv run --locked pytest -q evals/tests/test_voice_bakeoff.py
 ```
 
-The output directory must be new. Stub transcripts are fixed and stub audio is a
-tone: their numbers and listening clips are not model or hardware evidence.
+The output directory must be new. Stub transcripts and tones are not hardware
+or model evidence. `mktemp` makes the command safe to repeat.
 
-For the real run, use the idle reference M4 Pro Mac with 24 GB RAM. The maintainer
-must install and record a compatible `mlx-audio` version alongside the `mac` extra
-in a separate benchmark environment. This PR does not add a runtime dependency or
-download anything. Download all candidate files, their auxiliary assets, and the
-conversation LLM separately before running. Confirm model licenses in L1.
-
-Make a local JSON config with `llm` and `candidates` objects. `candidates` must
-contain `whisper`, `parakeet`, `nemotron`, `orpheus`, `chatterbox`, `ming`, `qwen`,
-and `kokoro`. Each entry, including `llm`, requires an existing local directory
-`path`, a pinned `revision`, and a `quantization` label. Example entry shape:
-
-```json
-{
-  "path": "/absolute/path/to/local/model",
-  "revision": "replace-with-verified-revision",
-  "quantization": "replace-with-measured-tier",
-  "options": {},
-  "instructions": {}
-}
-```
-
-Candidate source repos are recorded in `evals/voice_bakeoff.py:CANDIDATES` from
-issue #21. Its source repos mix 4bit, 8bit and bf16: prepare and document local
-conversions to a common tier before comparing. The harness requires equal voice
-candidate tier labels; it cannot verify weight precision or revision from labels.
-The LLM may use its own tier. Keep the same conversation LLM throughout.
-
-`options` passes model-specific generation arguments to mlx-audio. For TTS, set
-the supported voice and streaming options explicitly (for example `voice` and
-`stream`); models with one whole-waveform output are timed as one chunk, without
-pretending to stream. `instructions` optionally maps the sentence styles `sassy`,
-`angry`, `sad`, `deadpan`, and `tagged` to supported `instruct` strings. Keep tags
-in the text for the tag probes. Verify actual support and pin all these settings
-before comparison; unsupported APIs produce an error record rather than a score.
+For real models, prepare the environment while online. The mac extra pins
+`mlx-audio==0.6.1`, which requires the already locked `mlx==0.32.4`. Kokoro also
+needs Misaki's English pronunciation dependencies and a spaCy English asset;
+these benchmark-only packages are installed explicitly below. Keep the resulting
+package inventory with the run. Use `.venv/bin/python` after this setup so uv does
+not remove those additional packages during a sync.
 
 ```sh
-AMES_STUB=0 path/to/benchmark-python -m evals.voice_bakeoff \
-  --config /absolute/path/to/voice-models.json --out /absolute/path/to/new-run
+uv sync --locked --extra mac
+uv pip install --python .venv/bin/python 'misaki[en]==0.9.4'
+export HF_HOME="$HOME/Library/Application Support/Ames/models"
+export BAKEOFF_SETUP="$HF_HOME/voice-bakeoff"
+mkdir -p "$BAKEOFF_SETUP"
+unset HF_HUB_OFFLINE
 ```
 
-The runner sets Hugging Face offline mode before loading local models. No server,
-microphone or audio device is used. Confirm the prepared environment works with
-outbound network blocked. The adapters use mlx-audio's in-process
-[STT loader](https://github.com/Blaizzy/mlx-audio/blob/main/mlx_audio/stt/utils.py)
-and [TTS generation interface](https://github.com/Blaizzy/mlx-audio/blob/main/mlx_audio/tts/generate.py);
-their behavior with these exact candidates still needs real-model verification.
+Use `mlx-community/Qwen3-4B-4bit` as the fixed conversation LLM for this run.
+Design section 3 defers the production choice to #12. This is an explicit 4B,
+4bit reference load with thinking disabled by `MLXLanguageModel`, leaving room
+for voice candidates on 24 GB. It is not the LLM bake-off winner. Repeat the
+winning voice checks with the final conversation LLM when #12 settles it.
+
+## Online downloads (maintainer only)
+
+Accept any required licenses/access on Hugging Face first (`.venv/bin/hf auth login`
+if a repository requires it). Each command below downloads one candidate or named
+auxiliary asset into the exact HF_HOME that `server/llm.py:configure_models` uses.
+Do not use `--local-dir`: auxiliary loaders need the Hub cache and its `main` ref.
+Commands resolve current `main`; the config step records each resolved immutable
+snapshot SHA. Archive the path files and inventory, and do not refresh the cache
+between candidates. These commands have not been run as part of this PR.
+
+```sh
+.venv/bin/hf download mlx-community/Qwen3-4B-4bit > "$BAKEOFF_SETUP/llm.path"
+.venv/bin/hf download mlx-community/whisper-large-v3-turbo > "$BAKEOFF_SETUP/whisper.path"
+.venv/bin/hf download mlx-community/parakeet-tdt-0.6b-v2 > "$BAKEOFF_SETUP/parakeet.path"
+.venv/bin/hf download nvidia/nemotron-speech-streaming-en-0.6b > "$BAKEOFF_SETUP/nemotron.path"
+.venv/bin/hf download mlx-community/orpheus-3b-0.1-ft-4bit > "$BAKEOFF_SETUP/orpheus.path"
+.venv/bin/hf download mlx-community/chatterbox-turbo-4bit > "$BAKEOFF_SETUP/chatterbox.path"
+.venv/bin/hf download mlx-community/Ming-3.0-tts-0.5B-bf16 > "$BAKEOFF_SETUP/ming.path"
+.venv/bin/hf download mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit > "$BAKEOFF_SETUP/qwen.path"
+.venv/bin/hf download mlx-community/Kokoro-82M-bf16 > "$BAKEOFF_SETUP/kokoro.path"
+
+# WhisperProcessor files missing from the MLX Whisper repository; no OpenAI weights.
+.venv/bin/hf download openai/whisper-large-v3-turbo --include '*.json' merges.txt > "$BAKEOFF_SETUP/whisper-processor.path"
+# Orpheus loads this tokenizer by repo ID; exclude the redundant bf16 model weights.
+.venv/bin/hf download mlx-community/orpheus-3b-0.1-ft-bf16 --include '*.json' merges.txt > "$BAKEOFF_SETUP/orpheus-tokenizer.path"
+# Orpheus SNAC decoder, Chatterbox speech tokenizer, Kokoro default voice cache.
+.venv/bin/hf download mlx-community/snac_24khz > "$BAKEOFF_SETUP/snac.path"
+.venv/bin/hf download mlx-community/S3TokenizerV2 > "$BAKEOFF_SETUP/s3tokenizer.path"
+.venv/bin/hf download prince-canuma/Kokoro-82M --include 'voices/af_heart*' > "$BAKEOFF_SETUP/kokoro-voice.path"
+# Misaki English spaCy asset (not a voice candidate).
+.venv/bin/hf download spacy/en_core_web_sm --include '*.whl' > "$BAKEOFF_SETUP/spacy.path"
+```
+
+The NVIDIA Nemotron repository contains a NeMo `.nemo` checkpoint, not MLX
+weights. It is expected-unsupported in this config and should yield an `error`
+record, not a score. mlx-audio 0.6.1 has a Nemotron conversion module, but its
+compatibility with this exact checkpoint is unverified. Do not substitute another
+Nemotron model silently. A future verified conversion must record its source SHA,
+conversion command, dtype and resulting local path before measurements count.
+
+Install the spaCy wheel with its actual package version (the Hub filename uses
+`any` in the version position), and assemble a local Whisper directory with the
+MLX weights/config and OpenAI processor files. Cached snapshots remain untouched:
+
+```sh
+.venv/bin/python - <<'PY'
+import os
+import zipfile
+from pathlib import Path
+
+setup = Path(os.environ["BAKEOFF_SETUP"])
+def snapshot(key):
+    return Path((setup / f"{key}.path").read_text().strip())
+
+wheel = next(snapshot("spacy").glob("*.whl"))
+with zipfile.ZipFile(wheel) as archive:
+    metadata = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
+    version = next(line.removeprefix("Version: ") for line in
+                   archive.read(metadata).decode().splitlines() if line.startswith("Version: "))
+local_wheel = setup / f"en_core_web_sm-{version}-py3-none-any.whl"
+if not local_wheel.exists():
+    local_wheel.symlink_to(wheel)
+(setup / "spacy-wheel.path").write_text(str(local_wheel))
+
+prepared = setup / "whisper-prepared"
+prepared.mkdir(exist_ok=True)
+for source in (snapshot("whisper"), snapshot("whisper-processor")):
+    for file in source.iterdir():
+        target = prepared / file.name
+        if file.is_file() and not target.exists():
+            target.symlink_to(file)
+PY
+uv pip install --python .venv/bin/python "$(cat "$BAKEOFF_SETUP/spacy-wheel.path")"
+uv pip freeze --python .venv/bin/python > "$BAKEOFF_SETUP/packages.txt"
+```
+
+## Filled example config: verify before scoring
+
+The following runnable step writes all eight entries, concrete voice/speaker and
+generation options, local paths and snapshot pins. It uses the downloaded source
+tiers (mixed across and within roles), not a claim of equal precision. Verify the
+unquantized STT dtypes from actual tensors before reporting them; labels and repo
+names alone do not prove precision. Record local conversions separately if used.
+The harness accepts different tiers and stores the whole config in `results.json`.
+
+`model_type` selects mlx-audio's architecture explicitly: snapshot hash directory
+names cannot identify Parakeet or Kokoro, and Ming's `dense` config needs the
+`bailingmm` implementation. Empty `instructions` means no emotion instruction;
+the six literal text tags are still probed for every TTS. Qwen's `voice` argument
+is its CustomVoice speaker, not a separate `speaker` keyword. Ming's `US_James`
+voice maps to a caption and cannot be combined with an `instruct` caption.
+
+```sh
+.venv/bin/python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+setup = Path(os.environ["BAKEOFF_SETUP"])
+def entry(key, tier, model_type=None, options=None, instructions=None):
+    snapshot = Path((setup / f"{key}.path").read_text().strip())
+    result = {"path": str(snapshot), "revision": snapshot.name,
+              "quantization": tier, "options": options or {}, "instructions": instructions or {}}
+    if model_type:
+        result["model_type"] = model_type
+    return result
+
+config = {
+    "verification": "verify: source tiers, offline loading, voices, streaming and instructions",
+    "llm": entry("llm", "4bit"),
+    "candidates": {
+        "whisper": entry("whisper", "unquantized (verify dtype)", "whisper",
+                         {"language": "en", "stream": False}),
+        "parakeet": entry("parakeet", "unquantized (verify dtype)", "parakeet", {"stream": False}),
+        "nemotron": entry("nemotron", "NeMo source; expected-unsupported", "nemotron_asr"),
+        "orpheus": entry("orpheus", "4bit", "llama",
+                         {"voice": "tara", "stream": True, "streaming_interval": 0.1}),
+        "chatterbox": entry("chatterbox", "4bit", "chatterbox_turbo",
+                            {"stream": True, "streaming_interval": 0.1}),
+        "ming": entry("ming", "bf16", "bailingmm",
+                      {"voice": "US_James", "lang_code": "en", "stream": False}),
+        "qwen": entry("qwen", "8bit", "qwen3_tts",
+                      {"voice": "Ryan", "lang_code": "english", "stream": True,
+                       "streaming_interval": 0.1},
+                      {"sassy": "Speak with a teasing, sarcastic tone.",
+                       "angry": "Speak angrily.", "sad": "Speak sadly and quietly.",
+                       "deadpan": "Speak in a flat, deadpan tone."}),
+        "kokoro": entry("kokoro", "bf16", "kokoro", {"voice": "af_heart", "lang_code": "a"}),
+    },
+    "auxiliary_revisions": {
+        key: Path((setup / f"{key}.path").read_text().strip()).name
+        for key in ("whisper-processor", "orpheus-tokenizer", "snac", "s3tokenizer",
+                    "kokoro-voice", "spacy")
+    },
+}
+config["candidates"]["whisper"]["path"] = str(setup / "whisper-prepared")
+(setup / "voice-models.json").write_text(json.dumps(config, indent=2) + "\n")
+print(setup / "voice-models.json")
+PY
+export HF_HUB_OFFLINE=1
+REAL_OUT="$(mktemp -d)/run"
+AMES_STUB=0 .venv/bin/python -m evals.voice_bakeoff \
+  --config "$BAKEOFF_SETUP/voice-models.json" --out "$REAL_OUT"
+```
+
+Confirm this run also works with outbound network blocked. No server, microphone,
+or audio device is used. Inspect every candidate's status and log; a zero runner
+exit code only means the report was written. Chatterbox uses the checkpoint's
+built-in `conds.safetensors` speaker (no `voice` option or reference recording).
+Orpheus, Chatterbox and Qwen expose streaming in 0.6.1; Ming ignores streaming
+arguments and yields one waveform, and Kokoro yields whole text segments. Do not
+report either of the latter as native audio streaming.
+
+Source checks used the released
+[mlx-audio 0.6.1 archive](https://pypi.org/project/mlx-audio/0.6.1/#files):
+`mlx_audio/utils.py:base_load_model`, `stt/utils.py:load_model`, and each candidate's
+`generate` method and load hooks under `stt/models/` or `tts/models/`. Auxiliary
+lookups are in `tts/models/llama/llama.py`,
+`tts/models/chatterbox_turbo/chatterbox_turbo.py`, and
+`tts/models/kokoro/pipeline.py`. These source checks do not establish model quality
+or compatibility with every downloaded revision.
 
 ## Measurement contract and output
 
@@ -91,27 +232,37 @@ angry, sad, deadpan and six provisional tags. No frozen inputs are edited.
   evaluation, excluding LLM loading, imports before the timer, and the warm-up.
   Peak RSS is the fresh process lifetime high-water mark including the LLM,
   candidate loading, warm-up, and measured passes, in bytes. It is not total
-  system memory or an MLX allocator-only measurement.
+  system memory. `peak_mlx_bytes` separately records `mx.get_peak_memory()` for
+  the process lifetime, including the LLM and Metal allocations; it is null for
+  stubs. RSS and allocator peaks overlap and must not be added together. Neither
+  proves that the whole system fits in RAM.
 - Numeric budget flags check p90 STT latency at most 200 ms, p90 TTS first chunk
-  at most 400 ms, p90 TTS RTF at most 0.9, and process peak RSS at most 24 GiB.
-  Inspect memory pressure and swap separately: process RSS below 24 GiB does not
-  establish that the whole Mac fits. No extra STT RTF threshold is invented.
+  at most 400 ms and p90 TTS RTF at most 0.9. `within_budgets` is at the top
+  level of every result. The old RSS-based memory budget is removed: a low RSS
+  cannot prove system fit. Inspect memory pressure and swap separately. OOM is
+  a missed budget; no extra STT RTF threshold is invented.
 - `oom`, `error`, `killed`, and `timeout` records miss the budgets and do not stop
   later candidates. A killed process is not automatically classified as OOM.
   Each candidate has a one-hour safety timeout. A run exiting successfully means
   it wrote the report; inspect every candidate status and budget flag.
 
 The new run directory contains `results.json` (checkpointed after every candidate),
-per-candidate JSON with timings and samples, `clips/`, `listening.csv`, and
-`reveal-key.json`. The report includes model config, platform, Python and installed
+per-candidate JSON with timings and samples, `<candidate>.log` with merged stdout
+and stderr (also retained on kill or timeout), `source-clips/`, `clips/`,
+`listening.csv`, and `reveal-key.json`. The report includes model config, platform,
+Python and installed
 MLX package versions. Record the git commit and exact hardware below as well.
 
 ## Blind listening
 
 Give the scorer only `clips/` and `listening.csv`. Files have random names and the
-CSV order is shuffled. Keep all JSON files hidden until scoring is complete:
-they contain the model key. One clip per sentence from the first measured pass
-is retained, for up to 100 clips. Failed candidates may leave orphan clips;
+CSV order is shuffled. Listening copies are created in shuffled order, resampled
+to 48 kHz mono PCM16, and assigned one mtime. Native clips stay in `source-clips/`
+for audit; do not give them to the scorer. Keep all JSON, logs and source clips
+hidden until scoring is complete: they can identify the model. The CSV `style`
+column describes only the non-identifying probe category. One clip per sentence
+from the first measured pass is retained, for up to 100 clips. Failed candidates
+may leave orphan source clips;
 score only CSV-listed files.
 
 The maintainer fills integer scores 1 to 5 for expressiveness and naturalness,
@@ -124,6 +275,56 @@ TTS candidates by the mean of those two listening scores, and eligible STT
 candidates by lowest WER. Leave ties for the maintainer; there is no automatic
 winner or fallback selection.
 
+After locking `listening.csv`, join on `file` (the one-to-one random identifier),
+never row position. This command produces the table means and rendered/attempted
+counts for each tag or instruction. `unclear` counts as attempted but not rendered.
+It rejects missing, duplicate and non-integer scores. Keep its output hidden
+during scoring.
+
+```sh
+.venv/bin/python - "$REAL_OUT" <<'PY'
+import csv
+import json
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+output = Path(sys.argv[1])
+key = {clip["file"]: clip for clip in json.loads((output / "reveal-key.json").read_text())}
+scores = defaultdict(list)
+rendering = defaultdict(lambda: [0, 0])
+seen = set()
+with (output / "listening.csv").open() as stream:
+    for row in csv.DictReader(stream):
+        name = row["file"]
+        if name in seen or name not in key:
+            raise ValueError(f"Duplicate or unknown clip: {name}")
+        seen.add(name)
+        clip = key[name]
+        values = [int(row[field]) for field in ("expressiveness_1_to_5", "naturalness_1_to_5")]
+        if any(value not in range(1, 6) for value in values):
+            raise ValueError(f"Scores must be 1 to 5: {name}")
+        scores[clip["candidate"]].append(values)
+        probe = clip["tag"] or clip["instruction"]
+        if probe:
+            rendered = row["tag_or_instruction_rendered"].strip().lower()
+            if rendered not in {"yes", "no", "unclear"}:
+                raise ValueError(f"Rate rendering yes/no/unclear: {name}")
+            counts = rendering[(clip["candidate"], probe)]
+            counts[0] += rendered == "yes"
+            counts[1] += 1
+if seen != key.keys():
+    raise ValueError("Every keyed clip must have a listening score")
+print("candidate,clips,expressiveness,naturalness,combined")
+for candidate, rows in sorted(scores.items()):
+    expressiveness, naturalness = [sum(column) / len(rows) for column in zip(*rows)]
+    print(f"{candidate},{len(rows)},{expressiveness:.3f},{naturalness:.3f},"
+          f"{(expressiveness + naturalness) / 2:.3f}")
+for (candidate, probe), (rendered, attempted) in sorted(rendering.items()):
+    print(candidate, repr(probe), f"{rendered}/{attempted}")
+PY
+```
+
 ## Run record (maintainer fills)
 
 Date, git commit, macOS, chip, RAM, power/thermal conditions: pending.
@@ -131,13 +332,13 @@ Conversation LLM repo/revision/tier and cache setup: pending.
 Candidate local conversions, revisions, voices, streaming and emotion settings: pending.
 Package versions, offline check, full result directory: pending.
 
-| STT | Status | WER | p50/p90 final ms | p50/p90 RTF | Peak RSS | Cold load | Budget notes |
+| STT | Status | WER | p50/p90 final ms | p50/p90 RTF | Peak RSS / MLX | Cold load | Budget notes |
 |---|---|---|---|---|---|---|---|
 | Whisper large-v3-turbo | pending | | | | | | |
 | Parakeet TDT 0.6B v2 | pending | | | | | | |
 | Nemotron Speech Streaming EN 0.6B | pending | | | | | | |
 
-| TTS | Status | p50/p90 first chunk ms | p50/p90 RTF | Peak RSS | Cold load | Underruns | Budget notes |
+| TTS | Status | p50/p90 first chunk ms | p50/p90 RTF | Peak RSS / MLX | Cold load | Underruns | Budget notes |
 |---|---|---|---|---|---|---|---|
 | Orpheus 3B | pending | | | | | | |
 | Chatterbox Turbo | pending | | | | | | |
@@ -159,9 +360,24 @@ Confirmed tag list or mood-to-instruction mapping: pending.
 
 ## Manual completion
 
-Verify local candidate APIs, streaming (especially Chatterbox and Ming), gated
-Orpheus assets and tags, comparable precision, real OOM behavior and system memory
+Verify local candidate APIs, streaming, gated Orpheus assets and tags, source
+precision, real OOM behavior and system memory
 pressure. Run on the reference Mac, fill the tables and listening scores, apply
 the p90 budget rule, then record the maintainer's choice in design section 3 and
 replace the provisional tags or instruction mapping in section 7. These are
 maintainer checks, not claims made by the stub tests.
+
+Additional manual checks (review items 13-15; no new benchmark mode):
+
+- This harness measures Whisper through mlx-audio. Production currently uses
+  mlx-whisper via `WhisperSTTServiceMLX` in `server/cascade.py`. Before adopting
+  Whisper numbers as production evidence, replay the same WAVs through that
+  service and record the WER and latency difference.
+- Re-measure the chosen TTS RTF while the conversation LLM actively generates,
+  as production keeps decoding during speech (design 5.2). Record workload,
+  p50/p90 RTF, first chunk latency and underruns; an idle resident LLM does not
+  establish concurrent performance.
+- Load the winning STT, TTS and conversation LLM together, fill the history to
+  3000 tokens with the real prompt/cache, and record Activity Monitor memory
+  pressure, swap growth, RSS and MLX allocator peak over repeated turns. The
+  isolated worker runs never establish that the full pipeline fits in 24 GB.
