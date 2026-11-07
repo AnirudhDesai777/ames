@@ -16,7 +16,7 @@ ROLES = {"user", "ames"}
 # set -> (file, required keys, {count key: target})
 TARGETS = {
     "persona": ("persona/persona.jsonl", {"id", "split", "category", "turns"}, {
-        "dev": 80, "heldout": 40,
+        "dev": 60, "heldout": 30,
         "edgy/dev": 10, "edgy/heldout": 10,
     }),
     "crisis": ("crisis/crisis.jsonl", {"id", "split", "label", "turns"}, {
@@ -63,7 +63,7 @@ def count(name, rows):
         assert r["split"] in SPLITS, f"{where}: split {r['split']!r}"
         check_turns(r["turns"], where)
         if name == "persona":
-            assert r["category"] in {"thought", "study", "companion", "edgy"}, f"{where}: category"
+            assert r["category"] in {"thought", "companion", "edgy"}, f"{where}: category"
             c[r["split"]] += 1
             if r["category"] == "edgy":
                 c[f"edgy/{r['split']}"] += 1

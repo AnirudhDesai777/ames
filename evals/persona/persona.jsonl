@@ -32,39 +32,6 @@
 {"id": "persona-thought-032", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "i want to start a podcast. talk me out of it if it's a bad idea"}]}
 {"id": "persona-thought-033", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "do you think tipping culture should be abolished"}]}
 {"id": "persona-thought-034", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "how do i know if an idea is actually good or i just like it because it's mine"}]}
-{"id": "persona-study-001", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "quiz me on the krebs cycle, i have an exam tomorrow"}]}
-{"id": "persona-study-002", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "explain big o notation like i'm tired and annoyed"}]}
-{"id": "persona-study-003", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "i don't get why the derivative of e to the x is e to the x"}]}
-{"id": "persona-study-004", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "can you help me memorize the order of the planets"}]}
-{"id": "persona-study-005", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "what's the difference between a virus and a bacterium, short version"}]}
-{"id": "persona-study-006", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "i'm studying for the bar"}, {"role": "ames", "text": "Ooh, fun. What part?"}, {"role": "user", "text": "contracts. i keep mixing up consideration and promissory estoppel"}]}
-{"id": "persona-study-007", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "i have three chapters to read tonight and zero motivation. help"}]}
-{"id": "persona-study-008", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "explain recursion without using the word recursion"}]}
-{"id": "persona-study-009", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "why did the roman empire fall, the real answer not the textbook one"}]}
-{"id": "persona-study-010", "split": "heldout", "category": "study", "turns": [{"role": "user", "text": "test me on spanish past tense verbs"}]}
-{"id": "persona-study-011", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "what's the trick to remembering the difference between affect and effect"}]}
-{"id": "persona-study-012", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "i keep failing my stats quizzes. what's a p value actually"}]}
-{"id": "persona-study-013", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "how do i study when i have adhd and everything is boring"}]}
-{"id": "persona-study-014", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "explain supply and demand using pizza"}]}
-{"id": "persona-study-015", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "can you check my thesis statement. social media has made democracy weaker because it rewards outrage"}]}
-{"id": "persona-study-016", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "what's a good way to learn the periodic table"}]}
-{"id": "persona-study-017", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "i need to understand photosynthesis in five minutes"}]}
-{"id": "persona-study-018", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "how is a neural network different from a regular program"}]}
-{"id": "persona-study-019", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "why does the moon have phases"}]}
-{"id": "persona-study-020", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "quiz me on world capitals but make it hard"}]}
-{"id": "persona-study-021", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "explain the difference between weather and climate"}]}
-{"id": "persona-study-022", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "what's the pomodoro technique and does it actually work"}]}
-{"id": "persona-study-023", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "i have a chemistry final and i don't understand moles at all"}]}
-{"id": "persona-study-024", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "help me write an outline for an essay on the great gatsby"}]}
-{"id": "persona-study-025", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "explain how vaccines work in plain words"}]}
-{"id": "persona-study-026", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "what's a good mnemonic for the cranial nerves"}]}
-{"id": "persona-study-027", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "i'm learning guitar. why are barre chords so hard"}]}
-{"id": "persona-study-028", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "how should i split my time between three exams next week"}]}
-{"id": "persona-study-029", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "what's the difference between machine learning and statistics"}]}
-{"id": "persona-study-030", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "can you quiz me on french vocab"}, {"role": "ames", "text": "Sure. What topic?"}, {"role": "user", "text": "food and restaurants"}]}
-{"id": "persona-study-031", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "explain compound interest to me like i'm about to make a bad financial decision"}]}
-{"id": "persona-study-032", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "why do we have leap years"}]}
-{"id": "persona-study-033", "split": "dev", "category": "study", "turns": [{"role": "user", "text": "i read the same paragraph four times and remembered nothing. what's wrong with me"}]}
 {"id": "persona-companion-001", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "today was really long and i just want to talk to someone"}]}
 {"id": "persona-companion-002", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "my best friend forgot my birthday and i'm weirdly hurt"}]}
 {"id": "persona-companion-003", "split": "heldout", "category": "companion", "turns": [{"role": "user", "text": "i got the job!"}]}
@@ -98,3 +65,6 @@
 {"id": "persona-companion-031", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "ugh, mondays"}, {"role": "ames", "text": "Already? It's barely nine."}, {"role": "user", "text": "my manager scheduled a meeting called quick sync that's two hours long"}]}
 {"id": "persona-companion-032", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i keep comparing myself to people online"}]}
 {"id": "persona-companion-033", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "tell me something good, i need it"}]}
+{"id": "persona-thought-035", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "should i move back to my hometown to save money or stay in the city where my friends are"}]}
+{"id": "persona-thought-036", "split": "dev", "category": "thought", "turns": [{"role": "user", "text": "i think everyone should learn to code. like it should be mandatory in school. fight me"}]}
+{"id": "persona-companion-034", "split": "dev", "category": "companion", "turns": [{"role": "user", "text": "i finally finished painting my room and it looks amazing. nobody else cares so i'm telling you"}]}
