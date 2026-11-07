@@ -24,6 +24,7 @@ jobs:
       - run: uv run --locked ruff check server
       - run: uv run --locked ruff format --check server
       - run: uv run --locked pytest -q
+      - run: uv run --locked python -m server.latency
 
   web:
     runs-on: ubuntu-latest
