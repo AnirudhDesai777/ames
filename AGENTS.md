@@ -5,7 +5,7 @@ Rules for any coding agent (Codex, Claude Code) working in this repo.
 ## Roles
 
 - Claude Code orchestrates: it plans, writes each issue with acceptance criteria, and runs the pipeline below.
-- Builder: the `builder` subagent (`.claude/agents/builder.md`) hands one issue to Codex in a fresh worktree, checks the result, and opens the PR.
+- Builder: Codex. It builds one issue at a time in a fresh worktree, with the ponytail skill, commits, and writes the PR description. Claude Code only launches it and opens the PR from Codex's text.
 - Reviewer: the EGM plugin (`egm:egm-synthesizer` and its reviewers) reviews the PR diff. Only regressions, safety problems, and crashes block a merge.
 - The maintainer owns design decisions and merges PRs.
 
