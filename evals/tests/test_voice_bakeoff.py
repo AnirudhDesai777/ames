@@ -24,6 +24,29 @@ def test_word_edit_distance(reference, hypothesis, errors, words):
     assert bakeoff.word_errors(reference, hypothesis) == (errors, words)
 
 
+@pytest.mark.parametrize("tag_format", [None, "angle", "square", "none"])
+def test_sent_text_uses_native_tags_or_strips_them(tag_format):
+    entry = {} if tag_format is None else {"tag_format": tag_format}
+    for tag in ("laugh", "chuckle", "sigh", "gasp", "groan", "yawn"):
+        expected = (
+            "Hello."
+            if tag_format == "none"
+            else f"[{tag}] Hello."
+            if tag_format == "square"
+            else f"<{tag}> Hello."
+        )
+        assert bakeoff.sent_text(f"<{tag}> Hello.", "tagged", entry) == expected
+    assert bakeoff.sent_text("Hello.", "sad", entry) == "Hello."
+
+
+def test_sent_text_prepends_only_the_matching_style_prefix_after_rewriting_tags():
+    entry = {"tag_format": "none", "style_prefix": {"sad": "[crying]", "deadpan": ""}}
+    assert bakeoff.sent_text("<sigh> Hello.", "sad", entry) == "[crying] Hello."
+    assert bakeoff.sent_text("Hello.", "deadpan", entry) == "Hello."
+    assert bakeoff.sent_text("Hello.", "sassy", entry) == "Hello."
+    assert bakeoff.sent_text("Hello <sigh> again<yawn>", "tagged", entry) == "Hello again"
+
+
 def test_chunk_timing_accounts_for_playback_buffer_and_ignores_empty_chunks():
     ticks = iter([0, 0.1, 0.2, 0.3, 0.6, 0.7])
     sample, pcm, rate = bakeoff.tts_sample(
@@ -70,6 +93,9 @@ def test_three_warm_passes_reuse_all_recordings_without_exposing_gold_to_stt(mon
     calls = []
 
     class Voice:
+        def __init__(self, entry):
+            pass
+
         def transcribe(self, audio):
             calls.append(audio)
             return "unrelated transcript"
@@ -113,7 +139,48 @@ def test_tts_measures_twenty_fixed_sentences_and_saves_only_first_pass(monkeypat
     assert len(rows) == 20
     assert all(row["expressiveness_1_to_5"] == row["naturalness_1_to_5"] == "" for row in rows)
     assert "kokoro" not in (tmp_path / "listening.csv").read_text()
-    assert json.loads((tmp_path / "reveal-key.json").read_text())
+    clips = json.loads((tmp_path / "reveal-key.json").read_text())
+    for clip in clips:
+        text = bakeoff.SENTENCES[clip["sentence"] - 1][1]
+        assert clip["sent_text"] == text
+        assert clip["instruction"] == ""
+
+
+@pytest.mark.parametrize("tag_format", ["angle", "square", "none"])
+def test_stub_benchmark_transforms_text_and_reveals_original_probes(
+    monkeypatch, tmp_path, tag_format
+):
+    (tmp_path / "source-clips").mkdir()
+    (tmp_path / "clips").mkdir()
+    entry = {
+        "tag_format": tag_format,
+        "style_prefix": {"angry": "[angry]", "sassy": "[sarcastic]", "sad": "[crying]"},
+        "instructions": {"deadpan": "Speak flatly."},
+    }
+    calls = []
+    rewrite = bakeoff.sent_text
+
+    def record(text, style, entry):
+        result = rewrite(text, style, entry)
+        calls.append(result)
+        return result
+
+    monkeypatch.setattr(bakeoff, "sent_text", record)
+    result = bakeoff.benchmark("chatterbox", {"candidates": {"chatterbox": entry}}, tmp_path, True)
+    # Four generation passes plus the reveal metadata for the first measured pass.
+    assert len(calls) == 100
+    bakeoff.listening_files(tmp_path, [result])
+    clips = json.loads((tmp_path / "reveal-key.json").read_text())
+    for clip in clips:
+        style, text = bakeoff.SENTENCES[clip["sentence"] - 1]
+        assert clip["sent_text"] == rewrite(text, style, entry)
+        assert clip["sent_text"] in calls
+        if style == "tagged":
+            assert clip["tag"] == text.split()[0]
+            assert clip["instruction"] == ""
+        else:
+            assert clip["tag"] == ""
+            assert clip["instruction"] == entry["style_prefix"].get(style, "Speak flatly.")
 
 
 @pytest.mark.parametrize(
@@ -218,7 +285,8 @@ def test_config_requires_local_paths_pins_and_records_source_quantization(tmp_pa
         bakeoff.validate_config(config)
 
 
-def test_cli_stubs_never_import_model_libraries(tmp_path):
+@pytest.mark.parametrize("with_config", [False, True])
+def test_cli_stubs_never_import_model_libraries(tmp_path, with_config):
     script = """
 import importlib.abc
 import sys
@@ -230,21 +298,42 @@ sys.meta_path.insert(0, BlockModels())
 from evals.voice_bakeoff import main
 main()
 """
+    (tmp_path / "source-clips").mkdir()
+    args = ["--worker", "kokoro", "--out", str(tmp_path)]
+    if with_config:
+        entry = {
+            "path": str(tmp_path),
+            "revision": "pin",
+            "quantization": "bf16",
+            "tag_format": "none",
+            "style_prefix": {"sad": "[crying]"},
+        }
+        config = {"llm": entry, "candidates": dict.fromkeys(bakeoff.CANDIDATES, entry)}
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps(config))
+        args.extend(["--config", str(path)])
     result = subprocess.run(
-        [sys.executable, "-c", script, "--worker", "whisper", "--out", str(tmp_path)],
+        [sys.executable, "-c", script, *args],
         env={**os.environ, "AMES_STUB": "1"},
         capture_output=True,
         text=True,
         timeout=30,
     )
     assert result.returncode == 0, result.stderr
-    result = json.loads((tmp_path / "whisper.json").read_text())
-    assert result["status"] == "ok" and result["summary"]["samples"] == 90
+    result = json.loads((tmp_path / "kokoro.json").read_text())
+    assert result["status"] == "ok" and result["summary"]["samples"] == 60
+    tagged = next(clip for clip in result["clips"] if clip["tag"] == "<laugh>")
+    assert tagged["sent_text"] == (
+        "That was terrible. Tell me another one." if with_config else bakeoff.SENTENCES[14][1]
+    )
+    sad = next(clip for clip in result["clips"] if clip["style"] == "sad")
+    assert sad["instruction"] == ("[crying]" if with_config else "")
 
 
 @pytest.mark.parametrize("role", ["stt", "tts"])
+@pytest.mark.parametrize("tag_format", ["angle", "square", "none"])
 def test_local_adapter_uses_local_loader_materializes_audio_and_passes_options(
-    monkeypatch, tmp_path, role
+    monkeypatch, tmp_path, role, tag_format
 ):
     import numpy as np
 
@@ -282,6 +371,8 @@ def test_local_adapter_uses_local_loader_materializes_audio_and_passes_options(
             "model_type": "whisper" if role == "stt" else "kokoro",
             "options": {"language": "en"} if role == "stt" else {"stream": True, "voice": "test"},
             "instructions": {"sad": "Speak quietly."},
+            "tag_format": tag_format,
+            "style_prefix": {"sad": "[crying]"},
         },
     )
     if role == "stt":
@@ -289,11 +380,12 @@ def test_local_adapter_uses_local_loader_materializes_audio_and_passes_options(
         assert events[-2][1] == {"language": "en"}
         assert events[-1] == "sync"
     else:
-        chunks = list(voice.chunks("hello", "sad"))
+        chunks = list(voice.chunks("<sigh> hello", "sad"))
         assert len(chunks[0][0]) == 4 and chunks[0][1] == 16000
         assert events[-1] == "eval"
         assert events[-2][1] == {
-            "text": "hello",
+            "text": "[crying] "
+            + {"angle": "<sigh> hello", "square": "[sigh] hello", "none": "hello"}[tag_format],
             "stream": True,
             "voice": "test",
             "instruct": "Speak quietly.",
@@ -306,6 +398,38 @@ def test_local_adapter_uses_local_loader_materializes_audio_and_passes_options(
 def test_malformed_config_is_rejected(config):
     with pytest.raises(ValueError):
         bakeoff.validate_config(config)
+
+
+@pytest.mark.parametrize("value", ["", "curly", None, 1, [], {}])
+def test_config_rejects_invalid_tag_format(tmp_path, value):
+    entry = {"path": str(tmp_path), "revision": "pin", "quantization": "bf16"}
+    config = {"llm": entry, "candidates": {key: dict(entry) for key in bakeoff.CANDIDATES}}
+    config["candidates"]["kokoro"]["tag_format"] = value
+    with pytest.raises(ValueError, match="tag_format"):
+        bakeoff.validate_config(config)
+
+
+@pytest.mark.parametrize("value", [None, [], "[angry]", {"angry": 1}, {1: "[angry]"}])
+def test_config_rejects_invalid_style_prefix(tmp_path, value):
+    entry = {"path": str(tmp_path), "revision": "pin", "quantization": "bf16"}
+    config = {"llm": entry, "candidates": {name: dict(entry) for name in bakeoff.CANDIDATES}}
+    config["candidates"]["chatterbox"]["style_prefix"] = value
+    with pytest.raises(ValueError, match="style_prefix"):
+        bakeoff.validate_config(config)
+
+
+@pytest.mark.parametrize("tag_format", ["angle", "square", "none"])
+def test_config_accepts_tag_formats_and_style_mappings(tmp_path, tag_format):
+    entry = {
+        "path": str(tmp_path),
+        "revision": "pin",
+        "quantization": "bf16",
+        "tag_format": tag_format,
+        "style_prefix": {"sad": "[crying]"},
+        "instructions": {"sad": "Speak quietly."},
+    }
+    config = {"llm": entry, "candidates": dict.fromkeys(bakeoff.CANDIDATES, entry)}
+    assert bakeoff.validate_config(config) == config
 
 
 def test_summary_records_both_memory_peaks_without_claiming_system_fit():
