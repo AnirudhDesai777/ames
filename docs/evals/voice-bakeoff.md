@@ -53,26 +53,26 @@ snapshot SHA. Archive the path files and inventory, and do not refresh the cache
 between candidates. These commands have not been run as part of this PR.
 
 ```sh
-.venv/bin/hf download mlx-community/Qwen3-4B-4bit > "$BAKEOFF_SETUP/llm.path"
-.venv/bin/hf download mlx-community/whisper-large-v3-turbo > "$BAKEOFF_SETUP/whisper.path"
-.venv/bin/hf download mlx-community/parakeet-tdt-0.6b-v2 > "$BAKEOFF_SETUP/parakeet.path"
-.venv/bin/hf download nvidia/nemotron-speech-streaming-en-0.6b > "$BAKEOFF_SETUP/nemotron.path"
-.venv/bin/hf download mlx-community/orpheus-3b-0.1-ft-4bit > "$BAKEOFF_SETUP/orpheus.path"
-.venv/bin/hf download mlx-community/chatterbox-turbo-4bit > "$BAKEOFF_SETUP/chatterbox.path"
-.venv/bin/hf download mlx-community/Ming-3.0-tts-0.5B-bf16 > "$BAKEOFF_SETUP/ming.path"
-.venv/bin/hf download mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit > "$BAKEOFF_SETUP/qwen.path"
-.venv/bin/hf download mlx-community/Kokoro-82M-bf16 > "$BAKEOFF_SETUP/kokoro.path"
+.venv/bin/hf download -q mlx-community/Qwen3-4B-4bit > "$BAKEOFF_SETUP/llm.path"
+.venv/bin/hf download -q mlx-community/whisper-large-v3-turbo > "$BAKEOFF_SETUP/whisper.path"
+.venv/bin/hf download -q mlx-community/parakeet-tdt-0.6b-v2 > "$BAKEOFF_SETUP/parakeet.path"
+.venv/bin/hf download -q nvidia/nemotron-speech-streaming-en-0.6b > "$BAKEOFF_SETUP/nemotron.path"
+.venv/bin/hf download -q mlx-community/orpheus-3b-0.1-ft-4bit > "$BAKEOFF_SETUP/orpheus.path"
+.venv/bin/hf download -q mlx-community/chatterbox-turbo-4bit > "$BAKEOFF_SETUP/chatterbox.path"
+.venv/bin/hf download -q mlx-community/Ming-3.0-tts-0.5B-bf16 > "$BAKEOFF_SETUP/ming.path"
+.venv/bin/hf download -q mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit > "$BAKEOFF_SETUP/qwen.path"
+.venv/bin/hf download -q mlx-community/Kokoro-82M-bf16 > "$BAKEOFF_SETUP/kokoro.path"
 
 # WhisperProcessor files missing from the MLX Whisper repository; no OpenAI weights.
-.venv/bin/hf download openai/whisper-large-v3-turbo --include '*.json' merges.txt > "$BAKEOFF_SETUP/whisper-processor.path"
+.venv/bin/hf download -q openai/whisper-large-v3-turbo --include '*.json' --include merges.txt > "$BAKEOFF_SETUP/whisper-processor.path"
 # Orpheus loads this tokenizer by repo ID; exclude the redundant bf16 model weights.
-.venv/bin/hf download mlx-community/orpheus-3b-0.1-ft-bf16 --include '*.json' merges.txt > "$BAKEOFF_SETUP/orpheus-tokenizer.path"
+.venv/bin/hf download -q mlx-community/orpheus-3b-0.1-ft-bf16 --include '*.json' --include merges.txt > "$BAKEOFF_SETUP/orpheus-tokenizer.path"
 # Orpheus SNAC decoder, Chatterbox speech tokenizer, Kokoro default voice cache.
-.venv/bin/hf download mlx-community/snac_24khz > "$BAKEOFF_SETUP/snac.path"
-.venv/bin/hf download mlx-community/S3TokenizerV2 > "$BAKEOFF_SETUP/s3tokenizer.path"
-.venv/bin/hf download prince-canuma/Kokoro-82M --include 'voices/af_heart*' > "$BAKEOFF_SETUP/kokoro-voice.path"
+.venv/bin/hf download -q mlx-community/snac_24khz > "$BAKEOFF_SETUP/snac.path"
+.venv/bin/hf download -q mlx-community/S3TokenizerV2 > "$BAKEOFF_SETUP/s3tokenizer.path"
+.venv/bin/hf download -q prince-canuma/Kokoro-82M --include 'voices/af_heart*' > "$BAKEOFF_SETUP/kokoro-voice.path"
 # Misaki English spaCy asset (not a voice candidate).
-.venv/bin/hf download spacy/en_core_web_sm --include '*.whl' > "$BAKEOFF_SETUP/spacy.path"
+.venv/bin/hf download -q spacy/en_core_web_sm --include '*.whl' > "$BAKEOFF_SETUP/spacy.path"
 ```
 
 The NVIDIA Nemotron repository contains a NeMo `.nemo` checkpoint, not MLX
@@ -115,6 +115,7 @@ for source in (snapshot("whisper"), snapshot("whisper-processor")):
             target.symlink_to(file)
 PY
 uv pip install --python .venv/bin/python "$(cat "$BAKEOFF_SETUP/spacy-wheel.path")"
+# Installing the en_core_web_sm wheel downgrades weasel from 1.0.1 to 0.4.3, which is expected; packages.txt records it.
 uv pip freeze --python .venv/bin/python > "$BAKEOFF_SETUP/packages.txt"
 ```
 
