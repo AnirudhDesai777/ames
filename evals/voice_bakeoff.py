@@ -136,11 +136,25 @@ def summarize(samples, role, peak_rss_bytes, peak_mlx_bytes=None):
     return summary
 
 
+def sent_text(text, style, entry):
+    tag_format = entry.get("tag_format", "angle")
+    if tag_format == "square":
+        text = re.sub(r"<([^>]+)>", r"[\1]", text)
+    elif tag_format == "none":
+        text = re.sub(r"<[^>]+> ?", "", text)
+    prefix = entry.get("style_prefix", {}).get(style)
+    return f"{prefix} {text}" if prefix else text
+
+
 class StubVoice:
+    def __init__(self, entry=None):
+        self.entry = entry or {}
+
     def transcribe(self, audio):
         return "hi there"
 
     def chunks(self, text, style):
+        text = sent_text(text, style, self.entry)
         yield b"\x00\x20\x00\xe0" * 800, 16000
 
 
@@ -172,6 +186,7 @@ class LocalVoice:
     def chunks(self, text, style):
         import numpy as np
 
+        text = sent_text(text, style, self.entry)
         options = dict(self.entry.get("options", {}))
         instruction = self.entry.get("instructions", {}).get(style)
         if instruction:
@@ -208,6 +223,14 @@ def validate_config(config):
             raise ValueError(f"Local model directory missing: {entry['path']}")
         if any(not isinstance(entry.get(key, {}), dict) for key in ("options", "instructions")):
             raise ValueError("Model options and instructions must be objects")
+        prefixes = entry.get("style_prefix", {})
+        if not isinstance(prefixes, dict) or any(
+            not isinstance(style, str) or not isinstance(text, str)
+            for style, text in prefixes.items()
+        ):
+            raise ValueError("Model style_prefix must be an object of strings")
+        if entry.get("tag_format", "angle") not in ("angle", "square", "none"):
+            raise ValueError("Model tag_format must be angle, square or none")
         if "model_type" in entry and not isinstance(entry["model_type"], str):
             raise ValueError("Model type must be a string")
     return config
@@ -231,7 +254,8 @@ def benchmark(key, config, output, stub):
             llm = MLXLanguageModel(Path(config["llm"]["path"]).expanduser())
             asyncio.run(warm_llm(llm))
         started = time.perf_counter()
-        voice = StubVoice() if stub else LocalVoice(role, config["candidates"][key])
+        entry = config.get("candidates", {}).get(key, {})
+        voice = StubVoice(entry) if stub else LocalVoice(role, entry)
         cold_load = time.perf_counter() - started
         samples = []
         clips = []
@@ -273,11 +297,9 @@ def benchmark(key, config, output, stub):
                                 "sentence": index,
                                 "style": style,
                                 "tag": " ".join(re.findall(r"<[^>]+>", text)),
-                                "instruction": ""
-                                if stub
-                                else config["candidates"][key]
-                                .get("instructions", {})
-                                .get(style, ""),
+                                "instruction": entry.get("style_prefix", {}).get(style)
+                                or entry.get("instructions", {}).get(style, ""),
+                                "sent_text": sent_text(text, style, entry),
                             }
                         )
         peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -377,6 +399,7 @@ def main():
                 raise ValueError("Real models require Apple Silicon; use AMES_STUB=1 for CI")
             if not args.config:
                 raise ValueError("Real runs require --config with local model directories")
+        if args.config:
             config = validate_config(json.loads(args.config.read_text()))
         if args.worker:
             try:
