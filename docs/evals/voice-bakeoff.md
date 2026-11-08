@@ -81,7 +81,7 @@ The pinned NVIDIA Nemotron snapshot (`ebe59e5`) ships `model.safetensors`
 (651 float32 tensors) and a transformers-style `config.json`
 (`NemotronAsrStreamingForRNNT`) next to the `.nemo` file. mlx-audio 0.6.1 loads
 it directly with `model_type="nemotron_asr"`; no conversion step runs. The
-maintainer's 2026-11-08 check re-transcribed the 30 latency WAVs at WER 0.8%;
+2026-11-08 check re-transcribed the 30 latency WAVs at WER 0.8%;
 the only errors were "goodnight ames" heard as "Good night, Ames." It ran
 non-streaming with no options, so streaming mode remains untested. The same
 check on Parakeet gave WER 1.6%: the same "goodnight" split, "summarize" spelled
