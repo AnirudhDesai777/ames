@@ -129,8 +129,14 @@ The harness accepts different tiers and stores the whole config in `results.json
 
 `model_type` selects mlx-audio's architecture explicitly: snapshot hash directory
 names cannot identify Parakeet or Kokoro, and Ming's `dense` config needs the
-`bailingmm` implementation. Empty `instructions` means no emotion instruction;
-the six literal text tags are still probed for every TTS. Qwen's `voice` argument
+`bailingmm` implementation. Empty `instructions` means no emotion instruction.
+The optional `tag_format` defaults to `angle`, preserving `<tag>` text for existing
+configs. This config keeps angle tags for Orpheus, rewrites the six probe tags to
+square brackets for Chatterbox, and strips tags and their following space for
+Kokoro, Ming and Qwen. `style_prefix` maps styles to text prepended with one space;
+Chatterbox uses `[angry]`, `[sarcastic]` and `[crying]`, with no deadpan token.
+`style_prefix` must be an object of strings.
+Qwen's `voice` argument
 is its CustomVoice speaker, not a separate `speaker` keyword. Ming's `US_James`
 voice maps to a caption and cannot be combined with an `instruct` caption.
 
@@ -141,10 +147,12 @@ import os
 from pathlib import Path
 
 setup = Path(os.environ["BAKEOFF_SETUP"])
-def entry(key, tier, model_type=None, options=None, instructions=None):
+def entry(key, tier, model_type=None, options=None, instructions=None,
+          tag_format="angle", style_prefix=None):
     snapshot = Path((setup / f"{key}.path").read_text().strip())
     result = {"path": str(snapshot), "revision": snapshot.name,
-              "quantization": tier, "options": options or {}, "instructions": instructions or {}}
+              "quantization": tier, "options": options or {}, "instructions": instructions or {},
+              "tag_format": tag_format, "style_prefix": style_prefix or {}}
     if model_type:
         result["model_type"] = model_type
     return result
@@ -158,18 +166,23 @@ config = {
         "parakeet": entry("parakeet", "unquantized (verify dtype)", "parakeet", {"stream": False}),
         "nemotron": entry("nemotron", "NeMo source; expected-unsupported", "nemotron_asr"),
         "orpheus": entry("orpheus", "4bit", "llama",
-                         {"voice": "tara", "stream": True, "streaming_interval": 0.1}),
+                         {"voice": "tara", "stream": False}),
         "chatterbox": entry("chatterbox", "4bit", "chatterbox_turbo",
-                            {"stream": True, "streaming_interval": 0.1}),
+                            {"stream": True, "streaming_interval": 0.1},
+                            tag_format="square",
+                            style_prefix={"angry": "[angry]", "sassy": "[sarcastic]",
+                                          "sad": "[crying]"}),
         "ming": entry("ming", "bf16", "bailingmm",
-                      {"voice": "US_James", "lang_code": "en", "stream": False}),
+                      {"voice": "US_James", "lang_code": "en", "stream": False},
+                      tag_format="none"),
         "qwen": entry("qwen", "8bit", "qwen3_tts",
                       {"voice": "Ryan", "lang_code": "english", "stream": True,
                        "streaming_interval": 0.1},
                       {"sassy": "Speak with a teasing, sarcastic tone.",
                        "angry": "Speak angrily.", "sad": "Speak sadly and quietly.",
-                       "deadpan": "Speak in a flat, deadpan tone."}),
-        "kokoro": entry("kokoro", "bf16", "kokoro", {"voice": "af_heart", "lang_code": "a"}),
+                       "deadpan": "Speak in a flat, deadpan tone."}, tag_format="none"),
+        "kokoro": entry("kokoro", "bf16", "kokoro", {"voice": "af_heart", "lang_code": "a"},
+                        tag_format="none"),
     },
     "auxiliary_revisions": {
         key: Path((setup / f"{key}.path").read_text().strip()).name
@@ -191,9 +204,11 @@ Confirm this run also works with outbound network blocked. No server, microphone
 or audio device is used. Inspect every candidate's status and log; a zero runner
 exit code only means the report was written. Chatterbox uses the checkpoint's
 built-in `conds.safetensors` speaker (no `voice` option or reference recording).
-Orpheus, Chatterbox and Qwen expose streaming in 0.6.1; Ming ignores streaming
-arguments and yields one waveform, and Kokoro yields whole text segments. Do not
-report either of the latter as native audio streaming.
+Orpheus streaming in mlx-audio 0.6.1 repeats audio at chunk boundaries, so Orpheus
+runs non-streaming here. Its first-chunk time is full-generation time, not streaming
+latency. Chatterbox and Qwen use streaming; Ming ignores streaming arguments and
+yields one waveform, and Kokoro yields whole text segments. Do not report either
+of the latter as native audio streaming.
 
 Source checks used the released
 [mlx-audio 0.6.1 archive](https://pypi.org/project/mlx-audio/0.6.1/#files):
@@ -264,6 +279,11 @@ column describes only the non-identifying probe category. One clip per sentence
 from the first measured pass is retained, for up to 100 clips. Failed candidates
 may leave orphan source clips;
 score only CSV-listed files.
+
+The reveal key's `tag` preserves the original probe (such as `<laugh>`) even when
+rewritten or stripped. `sent_text` records the exact text sent to the model.
+`instruction` records the matching style prefix when present, otherwise the style's
+`instructions` value. Stub runs with `--config` apply the same text transforms.
 
 The maintainer fills integer scores 1 to 5 for expressiveness and naturalness,
 with 1 meaning poor and 5 excellent, and optional notes. After locking those
@@ -369,6 +389,8 @@ maintainer checks, not claims made by the stub tests.
 
 Additional manual checks (review items 13-15; no new benchmark mode):
 
+- If Orpheus wins, fix or replace its streaming decode before production, then
+  re-measure streaming latency and listen for repeated audio at chunk boundaries.
 - This harness measures Whisper through mlx-audio. Production currently uses
   mlx-whisper via `WhisperSTTServiceMLX` in `server/cascade.py`. Before adopting
   Whisper numbers as production evidence, replay the same WAVs through that
