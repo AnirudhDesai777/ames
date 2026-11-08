@@ -53,26 +53,28 @@ snapshot SHA. Archive the path files and inventory, and do not refresh the cache
 between candidates. These commands have not been run as part of this PR.
 
 ```sh
-.venv/bin/hf download mlx-community/Qwen3-4B-4bit > "$BAKEOFF_SETUP/llm.path"
-.venv/bin/hf download mlx-community/whisper-large-v3-turbo > "$BAKEOFF_SETUP/whisper.path"
-.venv/bin/hf download mlx-community/parakeet-tdt-0.6b-v2 > "$BAKEOFF_SETUP/parakeet.path"
-.venv/bin/hf download nvidia/nemotron-speech-streaming-en-0.6b > "$BAKEOFF_SETUP/nemotron.path"
-.venv/bin/hf download mlx-community/orpheus-3b-0.1-ft-4bit > "$BAKEOFF_SETUP/orpheus.path"
-.venv/bin/hf download mlx-community/chatterbox-turbo-4bit > "$BAKEOFF_SETUP/chatterbox.path"
-.venv/bin/hf download mlx-community/Ming-3.0-tts-0.5B-bf16 > "$BAKEOFF_SETUP/ming.path"
-.venv/bin/hf download mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit > "$BAKEOFF_SETUP/qwen.path"
-.venv/bin/hf download mlx-community/Kokoro-82M-bf16 > "$BAKEOFF_SETUP/kokoro.path"
+.venv/bin/hf download -q mlx-community/Qwen3-4B-4bit > "$BAKEOFF_SETUP/llm.path"
+.venv/bin/hf download -q mlx-community/whisper-large-v3-turbo > "$BAKEOFF_SETUP/whisper.path"
+.venv/bin/hf download -q mlx-community/parakeet-tdt-0.6b-v2 > "$BAKEOFF_SETUP/parakeet.path"
+.venv/bin/hf download -q nvidia/nemotron-speech-streaming-en-0.6b > "$BAKEOFF_SETUP/nemotron.path"
+.venv/bin/hf download -q mlx-community/orpheus-3b-0.1-ft-4bit > "$BAKEOFF_SETUP/orpheus.path"
+.venv/bin/hf download -q mlx-community/chatterbox-turbo-4bit > "$BAKEOFF_SETUP/chatterbox.path"
+.venv/bin/hf download -q mlx-community/Ming-3.0-tts-0.5B-bf16 > "$BAKEOFF_SETUP/ming.path"
+.venv/bin/hf download -q mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit > "$BAKEOFF_SETUP/qwen.path"
+.venv/bin/hf download -q mlx-community/Kokoro-82M-bf16 > "$BAKEOFF_SETUP/kokoro.path"
 
 # WhisperProcessor files missing from the MLX Whisper repository; no OpenAI weights.
-.venv/bin/hf download openai/whisper-large-v3-turbo --include '*.json' merges.txt > "$BAKEOFF_SETUP/whisper-processor.path"
+.venv/bin/hf download -q openai/whisper-large-v3-turbo --include '*.json' --include merges.txt > "$BAKEOFF_SETUP/whisper-processor.path"
 # Orpheus loads this tokenizer by repo ID; exclude the redundant bf16 model weights.
-.venv/bin/hf download mlx-community/orpheus-3b-0.1-ft-bf16 --include '*.json' merges.txt > "$BAKEOFF_SETUP/orpheus-tokenizer.path"
+.venv/bin/hf download -q mlx-community/orpheus-3b-0.1-ft-bf16 --include '*.json' --include merges.txt > "$BAKEOFF_SETUP/orpheus-tokenizer.path"
 # Orpheus SNAC decoder, Chatterbox speech tokenizer, Kokoro default voice cache.
-.venv/bin/hf download mlx-community/snac_24khz > "$BAKEOFF_SETUP/snac.path"
-.venv/bin/hf download mlx-community/S3TokenizerV2 > "$BAKEOFF_SETUP/s3tokenizer.path"
-.venv/bin/hf download prince-canuma/Kokoro-82M --include 'voices/af_heart*' > "$BAKEOFF_SETUP/kokoro-voice.path"
+.venv/bin/hf download -q mlx-community/snac_24khz > "$BAKEOFF_SETUP/snac.path"
+.venv/bin/hf download -q mlx-community/S3TokenizerV2 > "$BAKEOFF_SETUP/s3tokenizer.path"
+.venv/bin/hf download -q prince-canuma/Kokoro-82M --include 'voices/af_heart*' > "$BAKEOFF_SETUP/kokoro-voice.path"
 # Misaki English spaCy asset (not a voice candidate).
-.venv/bin/hf download spacy/en_core_web_sm --include '*.whl' > "$BAKEOFF_SETUP/spacy.path"
+mkdir -p "$BAKEOFF_SETUP/spacy-3.8"
+curl -fL -o "$BAKEOFF_SETUP/spacy-3.8/en_core_web_sm-3.8.0-py3-none-any.whl" https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+printf '%s  %s\n' '1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85' "$BAKEOFF_SETUP/spacy-3.8/en_core_web_sm-3.8.0-py3-none-any.whl" | shasum -a 256 -c
 ```
 
 The NVIDIA Nemotron repository contains a NeMo `.nemo` checkpoint, not MLX
@@ -82,29 +84,20 @@ compatibility with this exact checkpoint is unverified. Do not substitute anothe
 Nemotron model silently. A future verified conversion must record its source SHA,
 conversion command, dtype and resulting local path before measurements count.
 
-Install the spaCy wheel with its actual package version (the Hub filename uses
-`any` in the version position), and assemble a local Whisper directory with the
+Install the pinned spaCy 3.8.0 wheel and assemble a local Whisper directory with the
 MLX weights/config and OpenAI processor files. Cached snapshots remain untouched:
 
 ```sh
 .venv/bin/python - <<'PY'
 import os
-import zipfile
 from pathlib import Path
 
 setup = Path(os.environ["BAKEOFF_SETUP"])
 def snapshot(key):
     return Path((setup / f"{key}.path").read_text().strip())
 
-wheel = next(snapshot("spacy").glob("*.whl"))
-with zipfile.ZipFile(wheel) as archive:
-    metadata = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
-    version = next(line.removeprefix("Version: ") for line in
-                   archive.read(metadata).decode().splitlines() if line.startswith("Version: "))
-local_wheel = setup / f"en_core_web_sm-{version}-py3-none-any.whl"
-if not local_wheel.exists():
-    local_wheel.symlink_to(wheel)
-(setup / "spacy-wheel.path").write_text(str(local_wheel))
+(setup / "spacy-wheel.path").write_text(
+    str(setup / "spacy-3.8" / "en_core_web_sm-3.8.0-py3-none-any.whl"))
 
 prepared = setup / "whisper-prepared"
 prepared.mkdir(exist_ok=True)
@@ -115,6 +108,7 @@ for source in (snapshot("whisper"), snapshot("whisper-processor")):
             target.symlink_to(file)
 PY
 uv pip install --python .venv/bin/python "$(cat "$BAKEOFF_SETUP/spacy-wheel.path")"
+.venv/bin/python -c "import numpy; assert numpy.__version__ == '2.5.4'"
 uv pip freeze --python .venv/bin/python > "$BAKEOFF_SETUP/packages.txt"
 ```
 
@@ -174,8 +168,9 @@ config = {
     "auxiliary_revisions": {
         key: Path((setup / f"{key}.path").read_text().strip()).name
         for key in ("whisper-processor", "orpheus-tokenizer", "snac", "s3tokenizer",
-                    "kokoro-voice", "spacy")
+                    "kokoro-voice")
     },
+    "spacy_wheel_version": "3.8.0",
 }
 config["candidates"]["whisper"]["path"] = str(setup / "whisper-prepared")
 (setup / "voice-models.json").write_text(json.dumps(config, indent=2) + "\n")
