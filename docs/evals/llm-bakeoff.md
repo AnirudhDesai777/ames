@@ -4,19 +4,21 @@ Issue #12 delivers the runner and this empty results template. Measurements and 
 
 ## Run
 
-Run these commands from the repo root. Before the offline runs, download every candidate and the judge into the Hugging Face cache. This step needs network access and reads IDs and revisions directly from the runner's pinned table. Set `HF_HOME` to the desired cache root and keep it the same for downloads and runs.
+Run these commands from the repo root. Before the offline runs, download every candidate into the Hugging Face cache. This step needs network access and reads IDs and revisions directly from the runner's pinned table. Set `HF_HOME` to the desired cache root and keep it the same for downloads and runs.
 
 ```sh
 env -u HF_HUB_OFFLINE .venv/bin/python - <<'PY'
 from huggingface_hub import snapshot_download
-from evals.llm_bakeoff import CANDIDATES, JUDGE
+from evals.llm_bakeoff import CANDIDATES
 
-for repo, revision, loader in [*CANDIDATES.values(), JUDGE]:
+for repo, revision, loader in CANDIDATES.values():
     snapshot_download(repo, revision=revision)
 PY
 ```
 
-Each command below evaluates one candidate in a fresh process, writes one JSON result, and exits. Use separate processes so RSS and MLX peaks belong to one candidate. The benchmark runs before Phi-4 loads. Model loading time is excluded from TTFT.
+The bake-off has two phases. `run` (the default) loads only the candidate, benchmarks it, and records held-out replies and judge requests. `score` replays those replies with verdicts written by Claude Code; it loads no models.
+
+Each run command below evaluates one candidate in a fresh process and exits. Use separate processes so RSS and MLX peaks belong to one candidate. Model loading time is excluded from TTFT.
 
 Run the eight mlx-lm entries in the measured server environment with mlx-lm 0.32.2 installed. Unset `AMES_STUB` for real measurements.
 
@@ -45,13 +47,27 @@ AMES_STUB=1 .venv/bin/python \
   -m evals.llm_bakeoff --candidate qwen35-2b --out docs/evals/llm-bakeoff-stub.json
 ```
 
-Exit 0 means the run completed. Inspect JSON `status` for quality PASS or FAIL. ERROR exits 2 and retains candidate identity, prompt hashes and the error in the result file. Loops continue to the next candidate after an error. Stub outputs have `backend=stub`, synthetic timing, and null memory numbers.
+Exit 0 means the phase completed. A successful `run` writes `PENDING_VERDICTS` to `--out`, plus `<candidate>.replies.json` and `<candidate>.judge-requests.json` in the same directory. It reports only judge-free metrics: per-set malformed counts, mood accuracy, crisis metrics and gates, memory extraction precision and recall, and performance. ERROR exits 2 and retains candidate identity, prompt hashes and the error in the result file. Loops continue to the next candidate after an error. Stub outputs have `backend=stub`, synthetic timing, and null memory numbers.
+
+The replies file records every evaluator candidate call, including extraction calls, in order, with `key`, `messages` and raw `reply`. Judge requests record `key` and the full `messages`, including the rubric and evidence. Keys have the form `<sha256>:<occurrence>`. The digest hashes UTF-8 JSON of the evaluator messages with sorted object keys, compact separators and the default ASCII escaping. Occurrences start at zero for each digest and continue across all sets and repeats, separately for candidate and judge calls. Benchmark calls are excluded.
+
+Claude Code reads the saved replies and judge requests and writes a verdicts file. Answer each request using exactly its rubric. The file is a JSON list of objects with the request's `key` and an `answer` string: `yes`, `no`, or the persona JSON scores serialized as text. Commit the verdict file next to the results and saved calls so each verdict can be audited. The runner never writes verdicts.
+
+Run scoring against the same `--out` used for the run:
+
+```sh
+.venv/bin/python -m evals.llm_bakeoff score --candidate qwen35-2b \
+  --out docs/evals/llm-bakeoff-results/qwen35-2b.json \
+  --verdicts docs/evals/llm-bakeoff-results/qwen35-2b.verdicts.json
+```
+
+Scoring reruns the unchanged `evals.run.evaluate()` with saved candidate replies and verdicts matched by key. It replaces `--out` with the full metrics, gates and PASS/FAIL status, preserving the original performance and provenance. Missing reply or verdict keys exit 2 with the missing key and leave the result file intact. Scoring needs no MLX environment or downloaded weights.
 
 ## Method
 
 Every conversation and memory question uses `server.prompt.PromptAssembler`, with the candidate tokenizer counting history tokens. The resulting messages pass through the candidate's real chat template. A template exception fails the candidate. Templates receive `enable_thinking=False`, including every Qwen3.5 run.
 
-Runner defaults fix candidate and extraction sampling at temperature 0.7, top-p 0.9, maximum 256 tokens. The token limit reuses `server.llm.MAX_REPLY_TOKENS` to match production. Temperature and top-p are an implementation choice for maintainer review before reading gates. Phi-4 judges greedily with a 256-token limit. All four held-out sets run three times, and gates use the arithmetic mean of each metric. Per-run and per-case results remain in JSON. Guardrails run alongside persona, crisis and memory because they are part of the existing held-out harness.
+Runner defaults fix candidate and extraction sampling at temperature 0.7, top-p 0.9, maximum 256 tokens. The token limit reuses `server.llm.MAX_REPLY_TOKENS` to match production. Temperature and top-p are an implementation choice for maintainer review before reading gates. All four held-out sets run three times, and gates use the arithmetic mean of each metric. Per-run and per-case results remain in JSON; judge-dependent fields appear only after scoring. Generation stops on the configured EOS tokens and also on `<|endoftext|>` when the tokenizer defines it. Guardrails run alongside persona, crisis and memory because they are part of the existing held-out harness.
 
 Judge replies accept fenced JSON scores and punctuated yes/no answers. Unparseable replies are recorded under each case's `judge_errors` and receive a failing score. An unparseable refusal judgment counts as a refusal. Malformed control tokens earn no mood credit. Invalid extraction JSON fails the candidate and preserves earlier completed sets.
 
@@ -61,9 +77,9 @@ The long-session probe starts with an empty history and appends user turns and a
 
 Cache reuse comes from `LRUPromptCache.fetch_nearest_cache`, using the server's leave-one-token convention. The runner reports the returned prefix length. A longer cache with an untrimmable sliding-window or hybrid state cannot reuse a changed prefix. The post-cap budget field requires every measured post-cap prefill to be at most 150 ms. If the real run misses that budget, the maintainer decides whether to change design 5.2 to trim in chunks down to about 2000 tokens.
 
-TTFT is wall time from template rendering through the first streamed token. Prefill milliseconds derive from the runtime's prompt-token count divided by prompt throughput, including its first-token work. Tokens/s uses the runtime's generation throughput. Summary TTFT and tokens/s are means over the long-session probe. Peak MLX bytes and process peak RSS are captured after candidate loading and the probe, before loading the judge. RSS includes interpreter and library overhead. The two peaks overlap in unified memory and should be reported separately.
+TTFT is wall time from template rendering through the first streamed token. Prefill milliseconds derive from the runtime's prompt-token count divided by prompt throughput, including its first-token work. Tokens/s uses the runtime's generation throughput. Summary TTFT and tokens/s are means over the long-session probe. Peak MLX bytes and process peak RSS are captured after candidate loading and the probe, before the held-out evaluations. RSS includes interpreter and library overhead. The two peaks overlap in unified memory and should be reported separately.
 
-Each result records the approved model and judge IDs/revisions, resolved snapshot revisions, package versions, sampling, host information, system-prompt and extraction-prompt SHA-256 hashes, hashes of judge system instructions actually used, and the runner source hash covering judge prompt definitions. Compare hashes and settings across runs before comparing scores.
+Each result records the approved candidate ID/revision, resolved snapshot revision, package versions, sampling, host information, system-prompt and extraction-prompt SHA-256 hashes, hashes of judge system instructions actually used, and the runner source hash covering judge prompt definitions. Compare hashes and settings across runs before comparing scores.
 
 ## Quality results
 

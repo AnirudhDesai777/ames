@@ -351,7 +351,7 @@ Eval datasets live in `evals/<set>/` as JSONL. Results live in `docs/evals/`. Da
 
 Authoring: Claude Code drafts the prompts and labels; the maintainer reviews them and approves the freeze in #3's PR. The maintainer records the 30 latency WAV turns.
 
-Candidates: Claude Code writes the LLM candidate list (3 or 4 small instruct models plus one baseline of about 8B, each with an MLX build) into issue #12 after a fresh check of current models, before E starts. Judge: a local model of a different family than every candidate, at least 14B parameters, run on the reference machine. E names and pins it. CI runs every harness with a stub model and a stub judge.
+Candidates: Claude Code writes the LLM candidate list (3 or 4 small instruct models plus one baseline of about 8B, each with an MLX build) into issue #12 after a fresh check of current models, before E starts. Claude Code judges, from the saved replies, using the same rubric questions the runner asks; verdict files are committed next to the results so every verdict can be audited. CI runs every harness with a stub model and a stub judge.
 
 The maintainer approved the thresholds below in #3. A change needs its own issue.
 
@@ -470,7 +470,7 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 | S3a | Codex | Control-token parser and tag sanitizer (pure functions) | S1 | Agent: chunk-boundary and malformed-token tests |
 | S3b | Codex | Prompt assembly: stable prefix, 3000-token history, late block | S3a, P | Agent: prefix-stability and history-cap tests |
 | B | Codex runs, M confirms | LLM bake-off on held-out sets with the real prompt; persona gate | E, S2a, S3b | M: `docs/evals/llm-bakeoff.md`, choice recorded in section 3 |
-| L2 | CC | Pins and licenses for the chosen LLM, the D adapter, and the judge | D | `docs/models.md` rows added |
+| L2 | CC | Pins and licenses for the chosen LLM and the D adapter | D | `docs/models.md` rows added |
 | D | Codex runs, M confirms | Distillation on the B winner: teacher replies with expected moods on dev prompts only, MLX LoRA fine-tune | B | M: beats the winner's B scores on held-out, including mood accuracy; crisis and guardrail gates still pass |
 | S3c | Codex | TTS service for the chosen model, startup self-test, barge-in truncation; instruction lookup per mood; sanitizer strips all inline tags (S3a code) | S3a, L1 | Agent: self-test refusal and truncation tests with stub TTS. M: echo test |
 | S4 | Codex | UI: orb, transcript, mute, end, advisory, session-ended notice (Chrome) | S1b, S3a | Agent: component tests for each element |
@@ -498,7 +498,7 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 
 None open.
 
-Deferred to named slices: the LLM candidate list (issue #12, before E), the judge model (E), extraction fallback (S5b, then D). S2b is done: STT and TTS choices are recorded in section 3, with no allowed inline tags and the proposed mood mapping in section 7.
+Deferred to named slices: the LLM candidate list (issue #12, before E), extraction fallback (S5b, then D). S2b is done: STT and TTS choices are recorded in section 3, with no allowed inline tags and the proposed mood mapping in section 7.
 
 ## 16. Glossary
 
