@@ -353,7 +353,7 @@ Authoring: Claude Code drafts the prompts and labels; the maintainer reviews the
 
 Candidates: Claude Code writes the LLM candidate list (3 or 4 small instruct models plus one baseline of about 8B, each with an MLX build) into issue #12 after a fresh check of current models, before E starts. Judge: a local model of a different family than every candidate, at least 14B parameters, run on the reference machine. E names and pins it. CI runs every harness with a stub model and a stub judge.
 
-Thresholds below are proposals. The maintainer confirms or changes them when approving #3's PR.
+The maintainer approved the thresholds below in #3. A change needs its own issue.
 
 Record schemas (one JSON object per line):
 
