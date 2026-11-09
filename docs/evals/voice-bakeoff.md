@@ -1,8 +1,8 @@
 # Voice bake-off (issue #21)
 
-Status: harness ready for maintainer validation. No hardware measurements, listening
-scores, model choice, or supported tag list have been established. Design sections
-3 and 7 remain unchanged.
+Status: run 2 measurements, listening scores and model choices are recorded.
+Style instructions remain provisional because rendering was not rated. Design
+sections 3 and 7 remain unchanged.
 
 ## Environment (from the repository root)
 
@@ -50,7 +50,7 @@ auxiliary asset into the exact HF_HOME that `server/llm.py:configure_models` use
 Do not use `--local-dir`: auxiliary loaders need the Hub cache and its `main` ref.
 Commands resolve current `main`; the config step records each resolved immutable
 snapshot SHA. Archive the path files and inventory, and do not refresh the cache
-between candidates. These commands have not been run as part of this PR.
+between candidates.
 
 ```sh
 .venv/bin/hf download -q mlx-community/Qwen3-4B-4bit > "$BAKEOFF_SETUP/llm.path"
@@ -77,12 +77,15 @@ curl -fL -o "$BAKEOFF_SETUP/spacy-3.8/en_core_web_sm-3.8.0-py3-none-any.whl" htt
 printf '%s  %s\n' '1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85' "$BAKEOFF_SETUP/spacy-3.8/en_core_web_sm-3.8.0-py3-none-any.whl" | shasum -a 256 -c
 ```
 
-The NVIDIA Nemotron repository contains a NeMo `.nemo` checkpoint, not MLX
-weights. It is expected-unsupported in this config and should yield an `error`
-record, not a score. mlx-audio 0.6.1 has a Nemotron conversion module, but its
-compatibility with this exact checkpoint is unverified. Do not substitute another
-Nemotron model silently. A future verified conversion must record its source SHA,
-conversion command, dtype and resulting local path before measurements count.
+The pinned NVIDIA Nemotron snapshot (`ebe59e5`) ships `model.safetensors`
+(651 float32 tensors) and a transformers-style `config.json`
+(`NemotronAsrStreamingForRNNT`) next to the `.nemo` file. mlx-audio 0.6.1 loads
+it directly with `model_type="nemotron_asr"`; no conversion step runs. The
+2026-11-08 check re-transcribed the 30 latency WAVs at WER 0.8%;
+the only errors were "goodnight ames" heard as "Good night, Ames." It ran
+non-streaming with no options, so streaming mode remains untested. The same
+check on Parakeet gave WER 1.6%: the same "goodnight" split, "summarize" spelled
+"summarise", and one real mishearing ("wait" heard as "Pete").
 
 Install the pinned spaCy 3.8.0 wheel and assemble a local Whisper directory with the
 MLX weights/config and OpenAI processor files. Cached snapshots remain untouched:
@@ -158,7 +161,7 @@ config = {
         "whisper": entry("whisper", "unquantized (verify dtype)", "whisper",
                          {"language": "en", "stream": False}),
         "parakeet": entry("parakeet", "unquantized (verify dtype)", "parakeet", {"stream": False}),
-        "nemotron": entry("nemotron", "NeMo source; expected-unsupported", "nemotron_asr"),
+        "nemotron": entry("nemotron", "float32", "nemotron_asr"),
         "orpheus": entry("orpheus", "4bit", "llama",
                          {"voice": "tara", "stream": False}),
         "chatterbox": entry("chatterbox", "4bit", "chatterbox_turbo",
@@ -292,9 +295,12 @@ winner or fallback selection.
 
 After locking `listening.csv`, join on `file` (the one-to-one random identifier),
 never row position. This command produces the table means and rendered/attempted
-counts for each tag or instruction. `unclear` counts as attempted but not rendered.
-It rejects missing, duplicate and non-integer scores. Keep its output hidden
-during scoring.
+counts for each tag or instruction. `unclear` counts as attempted but not rendered;
+blank rendering values are not rated and do not enter those counts. Whole
+candidates may be excluded by removing all their rows from `listening.csv`.
+Every keyed clip of a kept candidate must be listed. It rejects duplicate or
+unknown clips and missing, non-integer or out-of-range scores for listed clips.
+Keep its output hidden during scoring.
 
 ```sh
 .venv/bin/python - "$REAL_OUT" <<'PY'
@@ -310,7 +316,8 @@ scores = defaultdict(list)
 rendering = defaultdict(lambda: [0, 0])
 seen = set()
 with (output / "listening.csv").open() as stream:
-    for row in csv.DictReader(stream):
+    listening = list(csv.DictReader(stream))
+    for row in listening:
         name = row["file"]
         if name in seen or name not in key:
             raise ValueError(f"Duplicate or unknown clip: {name}")
@@ -323,13 +330,17 @@ with (output / "listening.csv").open() as stream:
         probe = clip["tag"] or clip["instruction"]
         if probe:
             rendered = row["tag_or_instruction_rendered"].strip().lower()
+            if not rendered:
+                continue
             if rendered not in {"yes", "no", "unclear"}:
                 raise ValueError(f"Rate rendering yes/no/unclear: {name}")
             counts = rendering[(clip["candidate"], probe)]
             counts[0] += rendered == "yes"
             counts[1] += 1
-if seen != key.keys():
-    raise ValueError("Every keyed clip must have a listening score")
+listed = {key[name]["candidate"] for name in seen}
+expected = {name for name, clip in key.items() if clip["candidate"] in listed}
+if seen != expected:
+    raise ValueError("Every keyed clip of a listed candidate must appear in listening.csv")
 print("candidate,clips,expressiveness,naturalness,combined")
 for candidate, rows in sorted(scores.items()):
     expressiveness, naturalness = [sum(column) / len(rows) for column in zip(*rows)]
@@ -342,45 +353,87 @@ PY
 
 ## Run record (maintainer fills)
 
-Date, git commit, macOS, chip, RAM, power/thermal conditions: pending.
-Conversation LLM repo/revision/tier and cache setup: pending.
-Candidate local conversions, revisions, voices, streaming and emotion settings: pending.
-Package versions, offline check, full result directory: pending.
+Run 2 finished on 2026-11-07 at 19:58, at git commit `ced07ee`, on macOS 26.5.2
+with an Apple M4 Pro and 24 GB RAM. Power and thermal conditions were not recorded.
+The result directory is `$BAKEOFF_SETUP/runs/20261107-1958`. All eight candidates
+have status `ok`. An outbound-network-blocked check was not recorded in the
+supplied results.
 
-| STT | Status | WER | p50/p90 final ms | p50/p90 RTF | Peak RSS / MLX | Cold load | Budget notes |
-|---|---|---|---|---|---|---|---|
-| Whisper large-v3-turbo | pending | | | | | | |
-| Parakeet TDT 0.6B v2 | pending | | | | | | |
-| Nemotron Speech Streaming EN 0.6B | pending | | | | | | |
+The resident conversation LLM was `mlx-community/Qwen3-4B-4bit`, revision
+`4dcb3d1`, at 4bit, in the Hub cache under the `HF_HOME` from
+`server/llm.py:configure_models`. Packages were mlx 0.32.4, mlx-lm 0.32.2,
+mlx-audio 0.6.1, spaCy model wheel 3.8.0 and Python 3.12.12. Warm repeats: 3.
 
-| TTS | Status | p50/p90 first chunk ms | p50/p90 RTF | Peak RSS / MLX | Cold load | Underruns | Budget notes |
+Candidate settings matched the example config: Orpheus voice `tara`,
+non-streaming; Chatterbox streaming at a 0.1 s interval, square tags and style
+prefixes angry=`[angry]`, sassy=`[sarcastic]`, sad=`[crying]`; Qwen voice `Ryan`,
+streaming at a 0.1 s interval, tags stripped and the style instructions below;
+Kokoro voice `af_heart`, tags stripped; Ming voice `US_James`, non-streaming,
+tags stripped. Nemotron revision `ebe59e5` loaded directly without conversion;
+the chosen Parakeet and Qwen revisions are recorded below. Other candidate
+revisions remain in the archived run config.
+
+Memory columns below use decimal GB (bytes / 1e9).
+
+| STT | Status | WER | p50/p90 final ms | p50/p90 RTF | Peak RSS / MLX GB | Cold load s | Budget notes |
 |---|---|---|---|---|---|---|---|
-| Orpheus 3B | pending | | | | | | |
-| Chatterbox Turbo | pending | | | | | | |
-| Ming-3.0-tts 0.5B | pending | | | | | | |
-| Qwen3-TTS 1.7B CustomVoice | pending | | | | | | |
-| Kokoro 82M (speed floor) | pending | | | | | | |
+| Whisper large-v3-turbo | ok | 1.2% | 402 / 424 | 0.091 / 0.118 | 4.5 / 4.8 | 1.24 | misses p90 latency (200 ms) |
+| Parakeet TDT 0.6B v2 | ok | 1.6% | 37 / 50 | 0.009 / 0.010 | 5.3 / 5.1 | 0.45 | within |
+| Nemotron Speech Streaming EN 0.6B | ok | 0.8% | 117 / 183 | 0.029 / 0.031 | 5.3 / 4.9 | 0.44 | within |
+
+Parakeet and Nemotron each make at most one real recognition error on this
+30-clip set, so WER alone does not separate them.
+
+| TTS | Status | p50/p90 first chunk ms | p50/p90 RTF | Peak RSS / MLX GB | Cold load s | Underruns | Budget notes |
+|---|---|---|---|---|---|---|---|
+| Orpheus 3B | ok | 3790 / 5514 | 0.791 / 0.795 | 5.1 / 7.9 | 1.89 | 0 | misses first chunk (400 ms); non-streaming by design |
+| Chatterbox Turbo | ok | 213 / 214 | 0.491 / 0.520 | 3.8 / 4.1 | 0.80 | 0 | within |
+| Ming-3.0-tts 0.5B | ok | 2651 / 3679 | 1.053 / 1.087 | 5.9 / 6.4 | 0.72 | 0 | misses first chunk and RTF (0.9) |
+| Qwen3-TTS 1.7B CustomVoice | ok | 51 / 63 | 0.386 / 0.394 | 5.9 / 5.8 | 1.21 | 0 | within |
+| Kokoro 82M (speed floor) | ok | 96 / 124 | 0.035 / 0.037 | 3.3 / 3.8 | 0.08 | 0 | within |
+
+Ming was left out of listening because it missed both TTS budgets, so the
+maintainer scored 80 clips on 2026-11-08.
 
 | TTS | Clips scored | Expressiveness mean | Naturalness mean | Tags/instructions rendered/attempted |
 |---|---|---|---|---|
-| Orpheus | pending | | | |
-| Chatterbox | pending | | | |
-| Ming | pending | | | |
-| Qwen | pending | | | |
-| Kokoro | pending | | | |
+| Qwen | 20 | 4.10 | 3.45 | not rated |
+| Orpheus | 20 | 3.85 | 3.20 | not rated |
+| Chatterbox | 20 | 2.50 | 1.95 | not rated |
+| Kokoro | 20 | 1.65 | 1.45 | not rated |
 
-Chosen STT and rationale: pending maintainer measurements.
-Chosen TTS and rationale: pending maintainer listening and measurements.
-Confirmed tag list or mood-to-instruction mapping: pending.
+Rendering was not rated because the maintainer chose not to do the per-clip
+rendering pass.
+
+Chosen STT: Parakeet TDT 0.6B v2 (`mlx-community/parakeet-tdt-0.6b-v2`, revision
+`8ae1553`). It stays within the latency budget with the most headroom at p90 50 ms
+against 200 ms. The maintainer overrode the WER ranking in favor of that latency
+headroom because the gap between its WER of 1.6% and Nemotron's 0.8% amounts to
+one real recognition error on this set.
+
+Chosen TTS: Qwen3-TTS 1.7B CustomVoice, 8bit
+(`mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit`, revision `41d3337`), voice
+`Ryan`, streaming at a 0.1 s interval. It has the highest listening score
+(combined 3.77) and lowest p90 first chunk (63 ms). Orpheus scored second but
+its non-streaming p90 first chunk (5514 ms) misses the budget, so it is discarded.
+The maintainer notes that naturalness (3.45) needs further work, possibly through
+fine-tuning, later.
+
+Tag list or mood-to-instruction mapping: Qwen does not take inline tags; they are
+stripped. The run used these style instructions, which remain provisional because
+rendering was not rated:
+
+- sassy: "Speak with a teasing, sarcastic tone."
+- angry: "Speak angrily."
+- sad: "Speak sadly and quietly."
+- deadpan: "Speak in a flat, deadpan tone."
 
 ## Manual completion
 
 Verify local candidate APIs, streaming, gated Orpheus assets and tags, source
 precision, real OOM behavior and system memory
-pressure. Run on the reference Mac, fill the tables and listening scores, apply
-the p90 budget rule, then record the maintainer's choice in design section 3 and
-replace the provisional tags or instruction mapping in section 7. These are
-maintainer checks, not claims made by the stub tests.
+pressure. A separate issue will record the maintainer's choices in design
+sections 3 and 7. These are maintainer checks, not claims made by the stub tests.
 
 Additional manual checks (review items 13-15; no new benchmark mode):
 
