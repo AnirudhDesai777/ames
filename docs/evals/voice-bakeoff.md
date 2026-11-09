@@ -1,8 +1,8 @@
 # Voice bake-off (issue #21)
 
 Status: run 2 measurements, listening scores and model choices are recorded.
-Style instructions remain provisional because rendering was not rated. Design
-sections 3 and 7 remain unchanged.
+Style instructions remain provisional because rendering was not rated. Choices
+are recorded in design sections 3 and 7 (#69).
 
 ## Environment (from the repository root)
 
@@ -432,8 +432,8 @@ rendering was not rated:
 
 Verify local candidate APIs, streaming, gated Orpheus assets and tags, source
 precision, real OOM behavior and system memory
-pressure. A separate issue will record the maintainer's choices in design
-sections 3 and 7. These are maintainer checks, not claims made by the stub tests.
+pressure. The maintainer's choices are recorded in design sections 3 and 7 (#69).
+These are maintainer checks, not claims made by the stub tests.
 
 Additional manual checks (review items 13-15; no new benchmark mode):
 
