@@ -1,0 +1,2 @@
+W1108 22:30:10.386000 90658 .venv/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/redirects.py:35] NOTE: Redirects are currently not supported in MacOs.
+bonsai2-2b backend=mlx PENDING_VERDICTS

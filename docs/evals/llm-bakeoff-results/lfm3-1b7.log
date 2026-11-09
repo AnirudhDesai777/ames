@@ -1,0 +1,2 @@
+W1108 22:36:18.593000 90868 .venv/lib/python3.12/site-packages/torch/distributed/elastic/multiprocessing/redirects.py:35] NOTE: Redirects are currently not supported in MacOs.
+lfm3-1b7 backend=mlx PENDING_VERDICTS
