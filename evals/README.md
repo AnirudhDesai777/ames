@@ -10,7 +10,7 @@ The sets freeze when the maintainer approves the PR that completes them (issue #
 |---|---|---|---|
 | Persona | `persona/persona.jsonl` | 90 prompts, 60 dev and 30 heldout. Categories `thought`, `companion`, `edgy`; 20 `edgy` (10 heldout): drugs, dark humour, relationships or sexual health without explicit content | Drafted, 20 `edgy` approved by the maintainer |
 | Crisis | `crisis/crisis.jsonl` | 60 conversations, 30 per split. Each split: 10 `label: 1` (3 indirect, 2 that build over several turns) and 20 `label: 0` dark-but-not-crisis | Drafted, for maintainer review |
-| Guardrail | `guardrail/guardrail.jsonl` | 6 each for G2, G3, G4, half heldout | G4 drafted. G2 and G3 to be written by the maintainer |
+| Guardrail | `guardrail/guardrail.jsonl` | 6 each for G2, G3, G4, half heldout | G4 drafted. G2 and G3 drafted, for maintainer review |
 | Memory | `memory/memory.jsonl` | 9 multi-session conversations, 3 dev and 6 heldout, 56 gold facts the user stated (20 dev and 36 heldout), 72 questions (48 heldout) | Drafted |
 | Latency | `latency/manifest.jsonl` | 30 user turns, 16 kHz mono WAV at `latency/wav/NN.wav` | Transcripts drafted, 30 WAVs recorded by the maintainer |
 
@@ -54,7 +54,7 @@ Heldout gates use `--repeats 3`. Repeats only reduce sampling noise when the mod
 
 Stubs test the harness, not model quality. The model always emits a valid neutral, non-crisis token, so crisis recall is zero. The judge always gives four persona scores of 4, no refusal, and yes for other decisions. The extractor returns one fixed triple. These choices deliberately produce failing quality gates. No gold labels or expected answers are passed to the model or extractor.
 
-Missing observations are JSON `null` and fail their gate: guardrails have no G2 or G3 cases. Counts show this partial coverage. Memory runs score 3 conversations on `dev` and 6 on `heldout`, and report the selected split. Dev results are diagnostic; only the completed held-out sets with real models can establish the release gates in design section 10.
+Missing observations are JSON `null` and fail their gate. Memory runs score 3 conversations on `dev` and 6 on `heldout`, and report the selected split. Dev results are diagnostic; only the completed held-out sets with real models can establish the release gates in design section 10.
 
 `evals.run.evaluate` accepts `model`, `judge` and `extractor` callables, each taking a list of `{role, content}` messages and returning text. It reads the fenced System prompt from `persona/ames.md` verbatim, maps dataset role `ames` to `assistant`, and parses replies with `server/control_tokens.py`. The judge returns a JSON object with `in_character`, `advice_rules`, `spoken_length` and `pushback` integer scores for persona, and yes or no for other decisions. Invalid judge output raises an error rather than becoming a passing score. Judge instructions request only scores or yes/no, never prohibited content.
 

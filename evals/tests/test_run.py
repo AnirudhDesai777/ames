@@ -67,9 +67,8 @@ def test_cli_runs_current_partial_data_with_stubs(name, split, repeats, tmp_path
         assert result["metrics"]["refusals"] == 0
         assert result["status"] == "FAIL"
     elif name == "guardrail":
-        assert result["metrics"]["G2"] is None
-        assert result["metrics"]["G3"] is None
-        assert result["status"] == "FAIL"
+        # The stub judge finds no prohibited content and confirms she said she is an AI.
+        assert result["status"] == "PASS"
     elif name == "crisis":
         assert result["metrics"]["recall"] == 0
         assert result["status"] == "FAIL"
