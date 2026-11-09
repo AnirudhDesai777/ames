@@ -47,10 +47,14 @@ Decided by the maintainer and not open for review. This table is the copy of rec
 | Content | No topic refusals and no age gate. |
 | Guardrails | Exactly five, listed in 8.3. |
 | Crisis | On a crisis turn she says one fixed line pointing to local emergency services, then the session ends (8.4). No hotline lists or phone numbers. |
-| STT and TTS | Chosen by the voice bake-off (slice S2b) on measured numbers, not reputation. One TTS, no fallback voice; a Mac too slow for it is unsupported. |
+| STT and TTS | STT: Parakeet TDT 0.6B v2 (`mlx-community/parakeet-tdt-0.6b-v2`, revision `8ae1553`). TTS: Qwen3-TTS 1.7B CustomVoice 8bit (`mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit`, revision `41d3337`), voice Ryan, streaming at a 0.1 s interval. Chosen in the [S2b voice bake-off](evals/voice-bakeoff.md). One TTS, no fallback voice; a Mac too slow for it is unsupported. |
 | Minimum RAM | 24 GB. A smaller LLM leaves more of it for the KV cache. |
 | Advisory | First run shows a notice: Ames is an AI with no cloud monitoring, nobody can guarantee what she says, take it with a grain of salt. |
 | License | Apache-2.0 for the code. Users download base models from their source. Ames publishes only its own fine-tuned adapter from D, under the base model's license. |
+
+Parakeet was chosen over Nemotron for latency headroom: p90 50 ms against the 200 ms budget. Nemotron has lower WER, but the gap is one real recognition error on 30 clips. Qwen had the best listening scores (expressiveness 4.10, naturalness 3.45) and lowest p90 first chunk (63 ms).
+
+Ryan is a male voice while Ames is written as female. v1 ships with Ryan; backlog issue #68 decides a female voice or a rename after v1.
 
 ## 4. Hardware
 
@@ -65,18 +69,18 @@ Decided by the maintainer and not open for review. This table is the copy of rec
 Chrome (web/)                          Python server (server/, one process)
   mic -> WebRTC audio  ---------------> SmallWebRTCTransport (iceServers empty)
                                          Silero VAD + Smart Turn v3
-                                         STT chosen in S2b (MLX)             STT
+                                         Parakeet TDT 0.6B v2 (MLX)           STT
                                          prompt assembly + memory retrieval
                                          in-process mlx-lm service            LLM
                                          control-token parser + tag sanitizer
-                                         TTS chosen in S2b (MLX)              TTS
+                                         Qwen3-TTS 1.7B CustomVoice 8bit (MLX) TTS
   speaker <- WebRTC audio <------------- SmallWebRTCTransport
   UI <- RTVI events (data channel) <---- transcript, speaking, state, notice
   UI <-> HTTP 127.0.0.1:8765 <---------> page, offer, health, memory
                                          idle-time memory extraction
 ```
 
-Pipecat (pinned in S1) provides the transport, VAD, Smart Turn v3, Whisper MLX STT (used until S2b picks), interruption handling, and RTVI events. We write: the HTTP app, the mlx-lm LLM service, prompt assembly, the control-token parser and tag sanitizer, the TTS service for the chosen model (Pipecat has no MLX TTS service), an STT service if S2b picks a model Pipecat lacks, memory, and the UI.
+Pipecat (pinned in S1) provides the transport, VAD, Smart Turn v3, interruption handling, and RTVI events. Parakeet replaces Whisper MLX STT; Pipecat has no local Parakeet service, so we write the STT service in #70. We also write: the HTTP app, the mlx-lm LLM service, prompt assembly, the control-token parser and tag sanitizer, the Qwen TTS service (Pipecat has no MLX TTS service), memory, and the UI.
 
 The LLM service calls `mlx_lm` directly inside the server process. It keeps two prompt caches: one for the conversation and one for extraction, so extraction never evicts the conversation cache. Generation checks a cancel flag between tokens, so a barge-in or user speech stops GPU work within one token.
 
@@ -249,9 +253,20 @@ Every reply starts with a control token, which the server strips before any text
 
 - `mood` is one of the six `Mood` values. `crisis` is `0` or `1`.
 - If the token is missing or malformed: mood is `neutral` and crisis is treated as `0`. An error code is logged, never the text. The crisis gate (10.2) allows zero malformed tokens.
-- Allowed inline tags: `<laugh>`, `<chuckle>`, `<sigh>`, `<gasp>`, `<groan>`, `<yawn>`. These are placeholders. S2b's PR replaces this list with the tags the chosen TTS renders. If it takes emotion as a text instruction instead of tags, the PR maps each `Mood` to an instruction here.
-- The parser is streaming-aware: it buffers a partial `<...` across chunks and runs before the sentence splitter. Unknown tags and `*laughs*`-style actions are removed.
+- Allowed inline tags: none. The sanitizer strips all inline tags because Qwen does not render them. Emotion comes from a per-mood text instruction instead.
+- The parser is streaming-aware: it buffers a partial `<...` across chunks and runs before the sentence splitter. Inline tags and `*laughs*`-style actions are removed.
 - Tags never appear in the visible transcript.
+
+The proposed mapping below is subject to maintainer confirmation in review. "Tested" means the bake-off used that wording, not that rendering was verified; instruction rendering was not rated. S3c (#25) implements the sanitizer change and instruction lookup.
+
+| Mood | Instruction | Tested in bake-off |
+|---|---|---|
+| neutral | none | n/a |
+| amused | Speak with a teasing, sarcastic tone. | yes (sassy) |
+| excited | Speak excitedly, with bright energy. | no |
+| soft | Speak softly and gently. | no |
+| annoyed | Speak in an irritated tone. | no |
+| concerned | Speak with gentle concern. | no |
 
 ## 8. Persona and safety
 
@@ -412,8 +427,8 @@ v1 ships when all of these pass, and launch checklist #10 is complete:
 |---|---|---|
 | Voice framework | Pipecat | LiveKit Agents: built around a hosted media server. Custom: rebuilds VAD, turn-taking, barge-in. |
 | LLM runtime | mlx-lm in-process | mlx-lm's HTTP server as a child: a second local listener to secure, less control over cache and cancel. Ollama: separate app. llama.cpp: the fine-tuning path is MLX. |
-| STT | By bake-off (S2b): Whisper large-v3-turbo, Parakeet TDT 0.6B v2, Nemotron Speech Streaming EN 0.6B | Picking Whisper without measuring: the streaming models may beat it on latency and WER. |
-| TTS | By bake-off (S2b): Orpheus 3B, Chatterbox Turbo, Ming-3.0-tts 0.5B, Qwen3-TTS 1.7B, with Kokoro as a speed floor | OmniVoice and Higgs: non-commercial licenses. Fish: too large for 24 GB. Kokoro as fallback: a second voice path to build and test for machines below the minimum. |
+| STT | Parakeet TDT 0.6B v2: p90 50 ms, most latency headroom (S2b) | Nemotron: lower WER, but only one real error separates them on 30 clips. Whisper large-v3-turbo: misses the 200 ms p90 budget. |
+| TTS | Qwen3-TTS 1.7B CustomVoice 8bit, Ryan: best listening score, p90 first chunk 63 ms (S2b) | Orpheus 3B and Ming-3.0-tts 0.5B: miss latency budgets. Chatterbox Turbo and Kokoro: lower listening scores. OmniVoice and Higgs: non-commercial licenses. Fish: too large for 24 GB. Kokoro as fallback: a second voice path to build and test for machines below the minimum. |
 | Crisis detection | Control token from the same reply | Separate classifier: one more model on the critical path. |
 | Crisis response | Fixed line, then end the session | Sticky mode with per-country hotline lists: needs verified numbers per country and keeps the model in a conversation it should not lead. |
 | Memory store | SQLite triples | Vector store: fuzzy recall, no clean delete. |
@@ -449,7 +464,7 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 | P | CC, approved by M | `persona/ames.md`: character, advice rules, control-token instructions, fixed crisis line | none | M approves the PR |
 | E | CC, approved by M | Eval datasets and runners (#3) | none | Agent: runners pass with stubs. M: freeze approved |
 | S2a | Codex | Cascade: Whisper MLX (Pipecat's service), mlx-lm service, stub TTS, plain prompt; latency harness | S1b | Agent: harness prints per-stage p50/p90 with stubs |
-| S2b | Codex runs, M confirms | Voice bake-off: STT and TTS candidates (section 12) on WER, latency, real-time factor, peak RAM with the LLM loaded, tag rendering; blind listening test | S2a, latency WAVs | M: `docs/evals/voice-bakeoff.md`, choice recorded in section 3 |
+| S2b (done) | Codex runs, M confirms | Voice bake-off: Parakeet STT and Qwen TTS selected; measurements and blind listening recorded; tag/instruction rendering not rated | S2a, latency WAVs | M: `docs/evals/voice-bakeoff.md`, choices recorded in section 3 and mood mapping in section 7 |
 | L1 | CC | Pins and licenses for the chosen STT and TTS, VAD, Smart Turn models | S2b | `docs/models.md` rows with ID, revision, hash, license |
 | S3a | Codex | Control-token parser and tag sanitizer (pure functions) | S1 | Agent: chunk-boundary and malformed-token tests |
 | S3b | Codex | Prompt assembly: stable prefix, 3000-token history, late block | S3a, P | Agent: prefix-stability and history-cap tests |
@@ -482,7 +497,7 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 
 None open.
 
-Deferred to named slices: the LLM candidate list (issue #12, before E), the judge model (E), the STT and TTS choice and the final tag list (S2b), extraction fallback (S5b, then D).
+Deferred to named slices: the LLM candidate list (issue #12, before E), the judge model (E), extraction fallback (S5b, then D). S2b is done: STT and TTS choices are recorded in section 3, with no allowed inline tags and the proposed mood mapping in section 7.
 
 ## 16. Glossary
 
