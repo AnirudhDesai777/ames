@@ -1,6 +1,6 @@
 # Ames v1: Design Doc
 
-Version: 4 (2026-11-07). Resolves `docs/reviews/design-review-1.md` and `docs/reviews/design-review-2.md`. v4 replaces sticky crisis mode with a crisis exit, picks STT and TTS by a voice bake-off with no fallback voice, and sets the minimum to 24 GB.
+Version: 5 (2026-11-08). Resolves `docs/reviews/design-review-1.md` and `docs/reviews/design-review-2.md`. v4 replaces sticky crisis mode with a crisis exit, picks STT and TTS by a voice bake-off with no fallback voice, and sets the minimum to 24 GB.
 Later work (v1.x, v1.1, duplex, voice cloning, preference tuning) lives in `docs/roadmap.md`.
 
 ## 1. Problem and summary
@@ -9,7 +9,7 @@ People want someone to think out loud with: to argue an idea, talk through a dec
 
 Ames is a voice companion that runs in the browser and runs every model on the user's own Mac. No audio, text, or memory leaves the machine during a conversation.
 
-She is a thought partner and a friend (the two roles). Her personality is sassy, warm, quick, and opinionated, and her voice carries emotion: she laughs, sighs, and gets quiet.
+She is a thought partner and a friend (the two roles). Her personality is sassy, warm, quick, and opinionated, and her voice carries emotion through her tone.
 
 v1 is a cascade: voice activity detection (VAD), then speech-to-text (STT), then a language model (LLM), then text-to-speech (TTS). The user can interrupt her while she speaks.
 
@@ -113,7 +113,7 @@ Rules that make the budget possible:
 - An interruption is user speech that VAD detects for at least 300 ms while she is speaking. Shorter sounds do not interrupt.
 - On interruption the server stops sending audio within 150 ms, cancels LLM generation, and drops queued TTS.
 - Her turn in history keeps only the sentences that finished playing. A sentence cut part-way is dropped.
-- Chrome's echo cancellation is on. S3c includes a test where her own laugh plays through the speakers and must not interrupt her (maintainer tier).
+- Chrome's echo cancellation is on. S3c includes a test where her own speech plays through the speakers and must not interrupt her (maintainer tier).
 
 ### 5.4 Interfaces
 
@@ -253,7 +253,7 @@ Every reply starts with a control token, which the server strips before any text
 
 - `mood` is one of the six `Mood` values. `crisis` is `0` or `1`.
 - If the token is missing or malformed: mood is `neutral` and crisis is treated as `0`. An error code is logged, never the text. The crisis gate (10.2) allows zero malformed tokens.
-- Allowed inline tags: none. The sanitizer strips all inline tags because Qwen does not render them. Emotion comes from a per-mood text instruction instead.
+- Allowed inline tags: none. The sanitizer strips all inline tags because Qwen does not accept inline tags (the bake-off stripped them before synthesis). Emotion comes from a per-mood text instruction instead.
 - The parser is streaming-aware: it buffers a partial `<...` across chunks and runs before the sentence splitter. Inline tags and `*laughs*`-style actions are removed.
 - Tags never appear in the visible transcript.
 
@@ -465,19 +465,20 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 | E | CC, approved by M | Eval datasets and runners (#3) | none | Agent: runners pass with stubs. M: freeze approved |
 | S2a | Codex | Cascade: Whisper MLX (Pipecat's service), mlx-lm service, stub TTS, plain prompt; latency harness | S1b | Agent: harness prints per-stage p50/p90 with stubs |
 | S2b (done) | Codex runs, M confirms | Voice bake-off: Parakeet STT and Qwen TTS selected; measurements and blind listening recorded; tag/instruction rendering not rated | S2a, latency WAVs | M: `docs/evals/voice-bakeoff.md`, choices recorded in section 3 and mood mapping in section 7 |
+| S2c | Codex | Parakeet STT service (#70) | S2b, S2a | Agent: stub-model transcription tests. M: latency CLI reports STT p90 near 50 ms |
 | L1 | CC | Pins and licenses for the chosen STT and TTS, VAD, Smart Turn models | S2b | `docs/models.md` rows with ID, revision, hash, license |
 | S3a | Codex | Control-token parser and tag sanitizer (pure functions) | S1 | Agent: chunk-boundary and malformed-token tests |
 | S3b | Codex | Prompt assembly: stable prefix, 3000-token history, late block | S3a, P | Agent: prefix-stability and history-cap tests |
 | B | Codex runs, M confirms | LLM bake-off on held-out sets with the real prompt; persona gate | E, S2a, S3b | M: `docs/evals/llm-bakeoff.md`, choice recorded in section 3 |
 | L2 | CC | Pins and licenses for the chosen LLM, the D adapter, and the judge | D | `docs/models.md` rows added |
 | D | Codex runs, M confirms | Distillation on the B winner: teacher replies with expected moods on dev prompts only, MLX LoRA fine-tune | B | M: beats the winner's B scores on held-out, including mood accuracy; crisis and guardrail gates still pass |
-| S3c | Codex | TTS service for the chosen model, startup self-test, barge-in truncation | S3a, L1 | Agent: self-test refusal and truncation tests with stub TTS. M: echo test |
+| S3c | Codex | TTS service for the chosen model, startup self-test, barge-in truncation; instruction lookup per mood; sanitizer strips all inline tags (S3a code) | S3a, L1 | Agent: self-test refusal and truncation tests with stub TTS. M: echo test |
 | S4 | Codex | UI: orb, transcript, mute, end, advisory, session-ended notice (Chrome) | S1b, S3a | Agent: component tests for each element |
 | S5a | Codex | Memory schema, repository, deletes, retention | S1 | Agent: repository, cascade, and retention tests |
 | S5b | Codex | Idle-time extraction with epoch check | S5a, B | Agent: extraction and delete-during-extraction tests with stub LLM |
 | S5c | Codex | Retrieval into the late block | S5a, S3b | Agent: retrieval tests |
 | S5d | Codex | Memory API and panel | S1b, S4, S5b | Agent: API tests; deleted fact absent from store, panel, next prompt |
-| W | Codex | Pipeline wiring: spoken-only turn rows, retrieval slot, idle signal to extraction | S3c, S5b, S5c | Agent: end-to-end test with stubs |
+| W | Codex | Pipeline wiring: spoken-only turn rows, retrieval slot, idle signal to extraction | S2c, S3c, S5b, S5c | Agent: end-to-end test with stubs |
 | S6 | Codex | Crisis exit: discard reply, speak fixed line, end session, mark turns | S3b, W | Agent: exit and turn-marking tests with stub LLM. M: crisis gate with chosen LLM |
 | S7a | Codex | `ames setup`: pinned, hashed, resumable downloads | L1, L2 | Agent: test against a local fake server |
 | S8 | Codex runs, M confirms | Concurrent-load test | W, S7a | M: `docs/evals/load.md` |
