@@ -296,9 +296,10 @@ winner or fallback selection.
 After locking `listening.csv`, join on `file` (the one-to-one random identifier),
 never row position. This command produces the table means and rendered/attempted
 counts for each tag or instruction. `unclear` counts as attempted but not rendered;
-blank rendering values are not rated and do not enter those counts. Candidates
-may be excluded by removing their rows from `listening.csv`. It rejects duplicate
-or unknown clips and missing, non-integer or out-of-range scores for listed clips.
+blank rendering values are not rated and do not enter those counts. Whole
+candidates may be excluded by removing all their rows from `listening.csv`.
+Every keyed clip of a kept candidate must be listed. It rejects duplicate or
+unknown clips and missing, non-integer or out-of-range scores for listed clips.
 Keep its output hidden during scoring.
 
 ```sh
@@ -336,9 +337,10 @@ with (output / "listening.csv").open() as stream:
             counts = rendering[(clip["candidate"], probe)]
             counts[0] += rendered == "yes"
             counts[1] += 1
-expected = key.keys() & {row["file"] for row in listening}
+listed = {key[name]["candidate"] for name in seen}
+expected = {name for name, clip in key.items() if clip["candidate"] in listed}
 if seen != expected:
-    raise ValueError("Every listed keyed clip must have a listening score")
+    raise ValueError("Every keyed clip of a listed candidate must appear in listening.csv")
 print("candidate,clips,expressiveness,naturalness,combined")
 for candidate, rows in sorted(scores.items()):
     expressiveness, naturalness = [sum(column) / len(rows) for column in zip(*rows)]
@@ -371,6 +373,8 @@ tags stripped. Nemotron revision `ebe59e5` loaded directly without conversion;
 the chosen Parakeet and Qwen revisions are recorded below. Other candidate
 revisions remain in the archived run config.
 
+Memory columns below use decimal GB (bytes / 1e9).
+
 | STT | Status | WER | p50/p90 final ms | p50/p90 RTF | Peak RSS / MLX GB | Cold load s | Budget notes |
 |---|---|---|---|---|---|---|---|
 | Whisper large-v3-turbo | ok | 1.2% | 402 / 424 | 0.091 / 0.118 | 4.5 / 4.8 | 1.24 | misses p90 latency (200 ms) |
@@ -402,9 +406,10 @@ Rendering was not rated because the maintainer chose not to do the per-clip
 rendering pass.
 
 Chosen STT: Parakeet TDT 0.6B v2 (`mlx-community/parakeet-tdt-0.6b-v2`, revision
-`8ae1553`). It stays within the latency budget with the most headroom: p90 50 ms
-against 200 ms. Its WER of 1.6% against Nemotron's 0.8% amounts to one real
-recognition error on this set, so accuracy does not separate them.
+`8ae1553`). It stays within the latency budget with the most headroom at p90 50 ms
+against 200 ms. The maintainer overrode the WER ranking in favor of that latency
+headroom because the gap between its WER of 1.6% and Nemotron's 0.8% amounts to
+one real recognition error on this set.
 
 Chosen TTS: Qwen3-TTS 1.7B CustomVoice, 8bit
 (`mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit`, revision `41d3337`), voice
