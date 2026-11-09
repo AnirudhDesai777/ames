@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import subprocess
@@ -159,6 +160,24 @@ async def test_empty_transcription_fails_without_waiting_for_a_reply(monkeypatch
     monkeypatch.setattr(latency.StubTranscription, "run_stt", empty)
     with pytest.raises(RuntimeError, match="No final transcript"):
         await measure()
+
+
+def test_cli_reports_pipeline_startup_error(monkeypatch, capsys):
+    monkeypatch.setenv("AMES_STUB", "1")
+    wait_for = asyncio.wait_for
+
+    async def short_wait(awaitable, timeout):
+        return await wait_for(awaitable, 0.01)
+
+    monkeypatch.setattr(latency.asyncio, "wait_for", short_wait)
+    monkeypatch.setattr(
+        latency.WorkerRunner, "run", AsyncMock(side_effect=RuntimeError("STT model load failed"))
+    )
+    monkeypatch.setattr(sys, "argv", ["server.latency"])
+    with pytest.raises(SystemExit) as error:
+        latency.main()
+    assert error.value.code == 1
+    assert "Latency harness: STT model load failed" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

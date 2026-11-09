@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 import numpy as np
 import pytest
+from loguru import logger
 from pipecat.frames.frames import (
     ErrorFrame,
     InputAudioRawFrame,
@@ -75,10 +76,22 @@ async def test_blank_transcript_yields_no_frame(service, runtime, text):
 
 
 async def test_transcription_failure_yields_error_and_worker_recovers(service, runtime):
-    runtime.model.generate.side_effect = RuntimeError("private model details")
-    frames = [frame async for frame in service.run_stt(b"\x00\x00")]
+    failure = RuntimeError("private model details")
+    runtime.model.generate.side_effect = failure
+    messages = []
+    sink = logger.add(messages.append, format="{message}", backtrace=False, diagnose=False)
+    try:
+        frames = [frame async for frame in service.run_stt(b"\x00\x00")]
+    finally:
+        logger.remove(sink)
     assert len(frames) == 1 and isinstance(frames[0], ErrorFrame)
     assert frames[0].error == "local_transcription_failed"
+    errors = [message for message in messages if message.record["level"].name == "ERROR"]
+    assert len(errors) == 1
+    assert errors[0].record["message"] == "local_transcription_failed"
+    assert errors[0].record["exception"].value is failure
+    assert "Traceback (most recent call last)" in errors[0]
+    assert "RuntimeError: private model details" in errors[0]
     runtime.model.generate.side_effect = None
     runtime.model.generate.return_value = SimpleNamespace(text="recovered")
     assert [frame.text async for frame in service.run_stt(b"\x00\x00")] == ["recovered"]

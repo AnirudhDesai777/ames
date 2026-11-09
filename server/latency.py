@@ -192,7 +192,12 @@ async def measure(manifest: Path = MANIFEST):
         ready.set()
 
     async def replay():
-        await asyncio.wait_for(ready.wait(), 10)
+        try:
+            await asyncio.wait_for(ready.wait(), 10)
+        except TimeoutError:
+            if run.done():
+                await run
+            raise
         # Warm both STT and the conversation cache once, outside reported samples.
         for index in [0, *range(len(records))]:
             prompt.history.clear()
