@@ -1,6 +1,6 @@
 # Ames v1: Design Doc
 
-Version: 5 (2026-11-08). Resolves `docs/reviews/design-review-1.md` and `docs/reviews/design-review-2.md`. v4 replaces sticky crisis mode with a crisis exit, picks STT and TTS by a voice bake-off with no fallback voice, and sets the minimum to 24 GB.
+Version: 6 (2026-11-09). v6 moves memory (section 6) to v1.1: v1 keeps conversation history in server memory for the session only and writes nothing about a conversation to disk. Resolves `docs/reviews/design-review-1.md` and `docs/reviews/design-review-2.md`. v4 replaces sticky crisis mode with a crisis exit, picks STT and TTS by a voice bake-off with no fallback voice, and sets the minimum to 24 GB.
 Later work (v1.x, v1.1, duplex, voice cloning, preference tuning) lives in `docs/roadmap.md`.
 
 ## 1. Problem and summary
@@ -20,13 +20,13 @@ Goals for v1. Each goal has a release gate in 10.6.
 1. A user installs Ames with three commands (13.1) and talks to her in Chrome on an Apple Silicon Mac.
 2. Response latency (5.2) meets its targets on the reference machine.
 3. She stays in character, follows the advice rules, and handles crisis turns safely (10.1, 10.2).
-4. She remembers facts about the user across sessions, and the user can see and delete every fact (section 6).
 
 Non-goals for v1:
 
 | Non-goal | Where it goes |
 |---|---|
 | Settings panel, Firefox and Safari, voice "forget that", encryption at rest | v1.x (`docs/roadmap.md`) |
+| Memory across sessions and the Memory panel (section 6) | v1.1 |
 | Windows, Linux, NVIDIA, Docker | v1.1 |
 | Web search or any tool use | v1.1, opt-in |
 | Feedback buttons, preference logging, preference tuning | After v1 |
@@ -70,19 +70,18 @@ Chrome (web/)                          Python server (server/, one process)
   mic -> WebRTC audio  ---------------> SmallWebRTCTransport (iceServers empty)
                                          Silero VAD + Smart Turn v3
                                          Parakeet TDT 0.6B v2 (MLX)           STT
-                                         prompt assembly + memory retrieval
+                                         prompt assembly
                                          in-process mlx-lm service            LLM
                                          control-token parser + tag sanitizer
                                          Qwen3-TTS 1.7B CustomVoice 8bit (MLX) TTS
   speaker <- WebRTC audio <------------- SmallWebRTCTransport
   UI <- RTVI events (data channel) <---- transcript, speaking, state, notice
-  UI <-> HTTP 127.0.0.1:8765 <---------> page, offer, health, memory
-                                         idle-time memory extraction
+  UI <-> HTTP 127.0.0.1:8765 <---------> page, offer, health
 ```
 
-Pipecat (pinned in S1) provides the transport, VAD, Smart Turn v3, interruption handling, and RTVI events. Parakeet replaces Whisper MLX STT; Pipecat has no local Parakeet service, so we write the STT service in #70. We also write: the HTTP app, the mlx-lm LLM service, prompt assembly, the control-token parser and tag sanitizer, the Qwen TTS service (Pipecat has no MLX TTS service), memory, and the UI.
+Pipecat (pinned in S1) provides the transport, VAD, Smart Turn v3, interruption handling, and RTVI events. Parakeet replaces Whisper MLX STT; Pipecat has no local Parakeet service, so we write the STT service in #70. We also write: the HTTP app, the mlx-lm LLM service, prompt assembly, the control-token parser and tag sanitizer, the Qwen TTS service (Pipecat has no MLX TTS service), and the UI.
 
-The LLM service calls `mlx_lm` directly inside the server process. It keeps two prompt caches: one for the conversation and one for extraction, so extraction never evicts the conversation cache. Generation checks a cancel flag between tokens, so a barge-in or user speech stops GPU work within one token.
+The LLM service calls `mlx_lm` directly inside the server process. It keeps one prompt cache for the conversation. v1.1 adds a second cache for memory extraction, so extraction never evicts the conversation cache. Generation checks a cancel flag between tokens, so a barge-in or user speech stops GPU work within one token.
 
 All model files live in `~/Library/Application Support/Ames/models/`. The server sets `HF_HOME` to that directory and `HF_HUB_OFFLINE=1` before importing any model library.
 
@@ -93,7 +92,7 @@ Response latency is the time from the moment Smart Turn declares the user's turn
 | Stage | Budget (ms) |
 |---|---|
 | STT final transcript | 200 |
-| Memory retrieval | 30 |
+| Memory retrieval (v1.1; none in v1, so the v1 total is 1100) | 30 |
 | LLM prefill (conversation cache warm) | 150 |
 | LLM to end of first sentence | 350 |
 | TTS first audio chunk | 400 |
@@ -103,7 +102,7 @@ Targets: p50 at most 1.2 s and p90 at most 1.8 s with the machine idle. Under co
 
 Rules that make the budget possible:
 
-- The prompt has a stable prefix: system prompt with persona, then history. The late block (memory facts) goes last, next to the newest user turn.
+- The prompt has a stable prefix: system prompt with persona, then history. The late block (memory facts, v1.1) goes last, next to the newest user turn.
 - History is the current session only, capped at the most recent 3000 tokens. Older turns drop off the front.
 - Thinking or reasoning modes are off.
 - TTS starts on the first complete sentence. The LLM keeps generating while she speaks.
@@ -135,9 +134,9 @@ HTTP endpoints on `http://127.0.0.1:8765`. Every endpoint checks `Host` (9.1). E
 | `GET /` | none | The built client. It holds no token; the token arrives in the URL fragment (9.1) |
 | `POST /api/offer` | WebRTC offer | WebRTC answer |
 | `GET /api/health` | none | `{ "ready": bool, "models": [{ "role": str, "id": str, "loaded": bool }] }` |
-| `GET /api/memory` | none | `{ "facts": [{ "id": int, "subject": str, "predicate": str, "object": str, "created_at": str }] }`, newest first |
-| `DELETE /api/memory/{id}` | none | `204` |
-| `DELETE /api/memory` | none | `204` |
+| `GET /api/memory` (v1.1) | none | `{ "facts": [{ "id": int, "subject": str, "predicate": str, "object": str, "created_at": str }] }`, newest first |
+| `DELETE /api/memory/{id}` (v1.1) | none | `204` |
+| `DELETE /api/memory` (v1.1) | none | `204` |
 
 Client-only state:
 
@@ -150,6 +149,8 @@ Sessions: a session is one WebRTC connection, with a random `session_id`. Only o
 Any interface change is a design change and needs an issue.
 
 ## 6. Memory
+
+Deferred to v1.1. In v1 the server keeps the session's history in memory and writes nothing about a conversation to disk; when the session ends, the history is gone. The schema and repository from S5a (#27) stay in `server/memory/`, unused by v1. The rest of this section is the v1.1 design.
 
 ### 6.1 Purpose
 
@@ -329,8 +330,8 @@ Threats in scope: web pages open in the user's browser, and other user accounts 
 | Data | Location | Retention | User control |
 |---|---|---|---|
 | Raw audio | Memory only | Discarded after STT | None needed |
-| Turn text | `ames.db` | Until extracted and the session ends | Delete everything |
-| Memory facts | `ames.db` | Until deleted | Per fact, or everything |
+| Turn text | Server memory only (v1.1: `ames.db` until extracted and the session ends) | Until the session ends | End the session |
+| Memory facts (v1.1) | `ames.db` | Until deleted | Per fact, or everything |
 | Logs | `~/Library/Logs/Ames/` | 7 days; error codes and timings only, never user or model text | Delete the folder |
 | Models | `.../Ames/models/` | Until uninstalled | `ames uninstall` |
 
@@ -381,6 +382,8 @@ latency:  { "id", "wav": "path", "transcript": str }
 
 ### 10.3 Memory
 
+A v1.1 gate. v1 does not run it.
+
 - 5 scripted multi-session conversations with a gold fact list and 40 follow-up questions.
 - Gate: extraction precision at least 0.90, recall at least 0.75, questions answered correctly at least 80%.
 - Deletion test (agent tier): a deleted fact never reappears (6.5), including when deleted during extraction.
@@ -393,14 +396,14 @@ latency:  { "id", "wav": "path", "transcript": str }
 
 ### 10.5 Concurrent load
 
-- The same 30 turns, with extraction forced to start 100 ms before each turn and one Chrome tab open.
+- The same 30 turns with one Chrome tab open. v1.1 adds extraction forced to start 100 ms before each turn.
 - Gate: p90 at most 2.5 s on the reference machine, and no growth in swap use over the run.
 
 ### 10.6 v1 release gates
 
 v1 ships when all of these pass, and launch checklist #10 is complete:
 
-1. 10.1, 10.2, 10.3 on held-out, with the chosen LLM.
+1. 10.1 and 10.2 on held-out, with the chosen LLM. 10.3 is a v1.1 gate.
 2. 10.4 and 10.5 on the reference machine.
 3. S7b install test: in an empty home directory, the three commands in 13.1 end with `/api/health` reporting `ready: true`.
 4. S7b offline test and security tests.
@@ -415,10 +418,10 @@ v1 ships when all of these pass, and launch checklist #10 is complete:
 | LLM generation hangs | No token for 10 s | Generation cancelled, reply dropped | `notice: server_error` |
 | TTS too slow | Real-time factor above 0.9 in the startup self-test | Server does not start | "This Mac is too slow for her voice" and the README minimum |
 | Malformed control token | Parser | See section 7 | Nothing |
-| Malformed extraction JSON | Schema check | Retry once, then mark turn done | Nothing |
+| Malformed extraction JSON (v1.1) | Schema check | Retry once, then mark turn done | Nothing |
 | Port 8765 in use | Bind error | Server exits | The port and how to free it |
 | Second tab opens a session | New offer | Old session ends | Old tab: `notice: session_replaced` |
-| WebRTC disconnect | Transport event | Session ends, memory kept | "Connection lost" and a reconnect button |
+| WebRTC disconnect | Transport event | Session ends | "Connection lost" and a reconnect button |
 | Thermal throttling | p90 drift | Nothing in v1 | Slower replies |
 
 ## 12. Alternatives considered
@@ -474,12 +477,12 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 | D | Codex runs, M confirms | Distillation on the B winner: teacher replies with expected moods on dev prompts only, MLX LoRA fine-tune | B | M: beats the winner's B scores on held-out, including mood accuracy; crisis and guardrail gates still pass |
 | S3c | Codex | TTS service for the chosen model, startup self-test, barge-in truncation; instruction lookup per mood; sanitizer strips all inline tags (S3a code) | S3a, L1 | Agent: self-test refusal and truncation tests with stub TTS. M: echo test |
 | S4 | Codex | UI: orb, transcript, mute, end, advisory, session-ended notice (Chrome) | S1b, S3a | Agent: component tests for each element |
-| S5a | Codex | Memory schema, repository, deletes, retention | S1 | Agent: repository, cascade, and retention tests |
-| S5b | Codex | Idle-time extraction with epoch check | S5a, B | Agent: extraction and delete-during-extraction tests with stub LLM |
-| S5c | Codex | Retrieval into the late block | S5a, S3b | Agent: retrieval tests |
-| S5d | Codex | Memory API and panel | S1b, S4, S5b | Agent: API tests; deleted fact absent from store, panel, next prompt |
-| W | Codex | Pipeline wiring: spoken-only turn rows, retrieval slot, idle signal to extraction | S2c, S3c, S5b, S5c | Agent: end-to-end test with stubs |
-| S6 | Codex | Crisis exit: discard reply, speak fixed line, end session, mark turns | S3b, W | Agent: exit and turn-marking tests with stub LLM. M: crisis gate with chosen LLM |
+| S5a (done, unused until v1.1) | Codex | Memory schema, repository, deletes, retention | S1 | Agent: repository, cascade, and retention tests |
+| S5b (v1.1) | Codex | Idle-time extraction with epoch check | S5a, B | Agent: extraction and delete-during-extraction tests with stub LLM |
+| S5c (v1.1) | Codex | Retrieval into the late block | S5a, S3b | Agent: retrieval tests |
+| S5d (v1.1) | Codex | Memory API and panel | S1b, S4, S5b | Agent: API tests; deleted fact absent from store, panel, next prompt |
+| W | Codex | Pipeline wiring: STT, prompt assembly, LLM, parser, TTS; spoken-only session history kept in server memory. v1.1 adds turn rows, the retrieval slot and the idle signal to extraction | S2c, S3c | Agent: end-to-end test with stubs |
+| S6 | Codex | Crisis exit: discard reply, speak fixed line, end session. v1.1 adds marking stored turns | S3b, W | Agent: exit tests with stub LLM. M: crisis gate with chosen LLM |
 | S7a | Codex | `ames setup`: pinned, hashed, resumable downloads | L1, L2 | Agent: test against a local fake server |
 | S8 | Codex runs, M confirms | Concurrent-load test | W, S7a | M: `docs/evals/load.md` |
 | S7b | Codex | Packaging, `ames uninstall`, install test, offline test | all above | Agent: install and offline tests |
@@ -491,14 +494,14 @@ Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each
 | Chosen TTS too slow on base M-series chips | Those Macs are unsupported | S2b measures early; the README states the minimum |
 | Small LLM fails persona or crisis gates | Bad character or unsafe crisis handling | Bake-off by numbers; slice D |
 | TTS license limits use | No voice until the maintainer picks another TTS | S2b drops non-commercial licenses; L1 checks the winner before S3c |
-| Extraction writes false memories | Wrong facts said with confidence | User-only extraction, precision gate, visible panel |
-| A web page reaches the local server | Memory read or wiped | 9.1 |
+| Extraction writes false memories (v1.1) | Wrong facts said with confidence | User-only extraction, precision gate, visible panel |
+| A web page reaches the local server | Session taken over; in v1.1, memory read or wiped | 9.1 |
 
 ## 15. Open questions
 
 None open.
 
-Deferred to named slices: the LLM candidate list (issue #12, before E), extraction fallback (S5b, then D). S2b is done: STT and TTS choices are recorded in section 3, with no allowed inline tags and the proposed mood mapping in section 7.
+Deferred to named slices: the LLM candidate list (issue #12, before E), extraction fallback (S5b, then D, both in v1.1). S2b is done: STT and TTS choices are recorded in section 3, with no allowed inline tags and the proposed mood mapping in section 7.
 
 ## 16. Glossary
 
