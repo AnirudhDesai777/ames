@@ -257,7 +257,7 @@ Every reply starts with a control token, which the server strips before any text
 - The parser is streaming-aware: it buffers a partial `<...` across chunks and runs before the sentence splitter. Inline tags and `*laughs*`-style actions are removed.
 - Tags never appear in the visible transcript.
 
-The proposed mapping below is subject to maintainer confirmation in review. "Tested" means the bake-off used that wording, not that rendering was verified; instruction rendering was not rated. S3c (#25) implements the sanitizer change and instruction lookup.
+The maintainer confirmed the mapping below on 2026-11-08. "Tested" means the bake-off used that wording, not that rendering was verified; instruction rendering was not rated. S3c (#25) implements the sanitizer change and instruction lookup.
 
 | Mood | Instruction | Tested in bake-off |
 |---|---|---|
