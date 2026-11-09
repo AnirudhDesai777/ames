@@ -3,9 +3,10 @@
 import asyncio
 import os
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
 from pathlib import Path
 from threading import Event
+
+from server.mlx_runtime import MLX_LOCK
 
 MODEL_DIR = Path.home() / "Library/Application Support/Ames/models"
 
@@ -25,40 +26,56 @@ class MLXLanguageModel:
         self.caches = {}
 
     def generate(self, messages, cache_name, cancelled, emit):
-        configure_models()
-        from mlx_lm import load, stream_generate
-        from mlx_lm.models.cache import LRUPromptCache, make_prompt_cache
+        with MLX_LOCK:
+            configure_models()
+            import mlx.core as mx
+            from mlx_lm import load, stream_generate
+            from mlx_lm.generate import generation_stream
+            from mlx_lm.models.cache import LRUPromptCache, make_prompt_cache
 
-        if cancelled.is_set():
-            return
-        if self.model is None:
-            self.model, self.tokenizer = load(str(self.model_path))
-            self.caches = {
-                name: LRUPromptCache(max_size=1) for name in ("conversation", "extraction")
-            }
-        prompt = self.tokenizer.apply_chat_template(
-            messages, tokenize=True, add_generation_prompt=True, enable_thinking=False
-        )
-        store = self.caches[cache_name]
-        # Leave one prompt token to evaluate even on an exact cache hit.
-        cache, rest = store.fetch_nearest_cache(str(self.model_path), prompt[:-1])
-        rest = rest + prompt[-1:]
-        if cache is None:
-            cache = make_prompt_cache(self.model)
-        tokens = list(prompt)
-        with closing(
-            stream_generate(self.model, self.tokenizer, rest, prompt_cache=cache, max_tokens=256)
-        ) as stream:
+            if cancelled.is_set():
+                return
+            if self.model is None:
+                self.model, self.tokenizer = load(str(self.model_path))
+                self.caches = {
+                    name: LRUPromptCache(max_size=1) for name in ("conversation", "extraction")
+                }
+            prompt = self.tokenizer.apply_chat_template(
+                messages, tokenize=True, add_generation_prompt=True, enable_thinking=False
+            )
+            store = self.caches[cache_name]
+            # Leave one prompt token to evaluate even on an exact cache hit.
+            cache, rest = store.fetch_nearest_cache(str(self.model_path), prompt[:-1])
+            rest = rest + prompt[-1:]
+            if cache is None:
+                cache = make_prompt_cache(self.model)
+            tokens = list(prompt)
+            stream = stream_generate(
+                self.model, self.tokenizer, rest, prompt_cache=cache, max_tokens=256
+            )
+            mx.synchronize()
+        try:
             while not cancelled.is_set():
-                response = next(stream, None)
+                # Release between tokens so TTS can start before generation ends.
+                with MLX_LOCK:
+                    if cancelled.is_set():
+                        return
+                    response = next(stream, None)
+                    mx.synchronize(generation_stream)
                 if response is None:
                     break
                 tokens.append(response.token)
                 if cancelled.is_set():
                     return
                 emit(response.text)
-        if not cancelled.is_set():
-            store.insert_cache(str(self.model_path), tokens, cache)
+            if not cancelled.is_set():
+                with MLX_LOCK:
+                    store.insert_cache(str(self.model_path), tokens, cache)
+        finally:
+            with MLX_LOCK:
+                stream.close()
+                mx.synchronize(generation_stream)
+                mx.synchronize()
 
     async def tokens(self, messages, cache_name="conversation"):
         if cache_name not in {"conversation", "extraction"}:
@@ -86,7 +103,9 @@ class MLXLanguageModel:
                 yield value
         finally:
             cancelled.set()
-            await asyncio.shield(future)
+            # Let interruption frames reach the audio queue before GPU work finishes.
+            if not asyncio.current_task().cancelling():
+                await asyncio.shield(future)
 
     async def close(self):
         await asyncio.to_thread(self.executor.shutdown, wait=True)
@@ -94,7 +113,7 @@ class MLXLanguageModel:
 
 class StubLanguageModel:
     async def tokens(self, messages, cache_name="conversation"):
-        for text in ("I heard you. ", "Tell me more."):
+        for text in ("<state mood=neutral crisis=0>I heard you. ", "Tell me more."):
             await asyncio.sleep(0)
             yield text
 

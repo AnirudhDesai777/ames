@@ -42,7 +42,11 @@ def runtime(monkeypatch):
 
     mlx = SimpleNamespace(load=Mock(return_value=(object(), tokenizer)), stream_generate=Mock())
     mlx.stream_generate.side_effect = stream
+    mx = SimpleNamespace(synchronize=Mock())
+    monkeypatch.setitem(sys.modules, "mlx", SimpleNamespace(core=mx))
+    monkeypatch.setitem(sys.modules, "mlx.core", mx)
     monkeypatch.setitem(sys.modules, "mlx_lm", mlx)
+    monkeypatch.setitem(sys.modules, "mlx_lm.generate", SimpleNamespace(generation_stream=object()))
     monkeypatch.setitem(sys.modules, "mlx_lm.models.cache", cache)
     return SimpleNamespace(mlx=mlx, cache=cache, tokenizer=tokenizer, threads=threads)
 
@@ -98,10 +102,10 @@ async def test_cancel_during_token_stops_before_next_and_keeps_cache(tmp_path, r
     try:
         assert await asyncio.to_thread(entered.wait, 5)
         task.cancel()
-        await asyncio.sleep(0)
-        release.set()
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await asyncio.wait_for(task, 0.15)
+        release.set()
+        await asyncio.get_running_loop().run_in_executor(model.executor, lambda: None)
         assert generated == [0, 1]
         assert closed == [True]
         assert model.caches["conversation"].saved is None

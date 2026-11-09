@@ -1,6 +1,6 @@
 import pytest
 
-from server.control_tokens import ALLOWED_TAGS, MOODS, ParserState, parse_chunk
+from server.control_tokens import MOODS, ParserState, parse_chunk
 
 
 def parse_parts(parts):
@@ -86,15 +86,15 @@ def test_parse_is_pure_and_state_is_per_reply(capsys, caplog):
     assert capsys.readouterr() == ("", "")
 
 
-@pytest.mark.parametrize("tag", sorted(ALLOWED_TAGS))
-def test_allowed_tags_are_only_in_tts_at_every_boundary(tag):
+@pytest.mark.parametrize("tag", ["<laugh>", "<chuckle>", "<sigh>", "<gasp>", "<groan>", "<yawn>"])
+def test_formerly_allowed_tags_are_stripped_at_every_boundary(tag):
     reply = f"<state mood=amused crisis=0>Hello {tag} there."
     for parts in [[reply[:split], reply[split:]] for split in range(len(reply) + 1)] + [
         list(reply)
     ]:
         state, tts, transcript, errors = parse_parts(parts)
         assert state.mood == "amused"
-        assert tts == f"Hello {tag} there."
+        assert tts == "Hello  there."
         assert transcript == "Hello  there."
         assert not errors
 
@@ -109,7 +109,7 @@ def test_allowed_tags_are_only_in_tts_at_every_boundary(tag):
         ('<laugh volume="loud">', '<laugh volume="loud">', '<laugh volume="loud">'),
         ("<LAUGH>", "", ""),
         ("*laughs*", "laughs", "laughs"),
-        ("*laughs <gasp> quietly*", "laughs <gasp> quietly", "laughs  quietly"),
+        ("*laughs <gasp> quietly*", "laughs  quietly", "laughs  quietly"),
         ("<state mood=annoyed crisis=1>", "", ""),
     ],
 )
@@ -124,13 +124,13 @@ def test_inline_markup_at_every_boundary(markup, tts_markup, transcript_markup):
 
 
 @pytest.mark.parametrize("tag", ["<bogus>", "<smile>", "</laugh>"])
-def test_unknown_tags_after_allowed_tag_at_every_boundary(tag):
+def test_adjacent_known_and_unknown_tags_at_every_boundary(tag):
     reply = f"<state mood=amused crisis=0>ha <laugh> ok {tag} done"
     for parts in [[reply[:split], reply[split:]] for split in range(len(reply) + 1)] + [
         list(reply)
     ]:
         state, tts, transcript, errors = parse_parts(parts)
-        assert tts == "ha <laugh> ok  done"
+        assert tts == "ha  ok  done"
         assert transcript == "ha  ok  done"
         assert not state.pending
         assert not errors
@@ -169,7 +169,7 @@ def test_sanitizer_handles_multiple_boundaries_in_one_reply():
             state, tts, transcript, errors = parse_parts(
                 [reply[:first], reply[first:second], reply[second:]]
             )
-            assert tts == "<laugh>Hi.waves*Bye.<sigh>"
+            assert tts == "Hi.waves*Bye."
             assert transcript == "Hi.waves*Bye."
             assert not state.pending
             assert not errors
@@ -205,7 +205,7 @@ def test_partial_inline_tag_waits_for_closing_chunk():
     first = parse_chunk(ParserState(), "<state mood=amused crisis=0>Hi.<lau")
     assert first.tts_text == first.transcript_text == "Hi."
     last = parse_chunk(first.state, "gh>Bye.", final=True)
-    assert last.tts_text == "<laugh>Bye."
+    assert last.tts_text == "Bye."
     assert last.transcript_text == "Bye."
 
 
@@ -213,7 +213,7 @@ def test_partial_inline_tag_waits_for_closing_chunk():
 def test_missing_control_token_still_sanitizes_first_tag(tag):
     state, tts, transcript, errors = parse_parts(list(tag + "Hello."))
     assert (state.mood, state.crisis) == ("neutral", 0)
-    assert tts == (tag if tag == "<laugh>" else "") + "Hello."
+    assert tts == "Hello."
     assert transcript == "Hello."
     assert errors == ["control_token_missing"]
 
@@ -222,7 +222,7 @@ def test_final_call_can_supply_text_and_keeps_unfinished_words():
     result = parse_chunk(
         ParserState(), "<state mood=soft crisis=0><sigh>Hello.*unfinished", final=True
     )
-    assert result.tts_text == "<sigh>Hello.unfinished"
+    assert result.tts_text == "Hello.unfinished"
     assert result.transcript_text == "Hello.unfinished"
     assert not result.state.pending
     assert result.error_code is None

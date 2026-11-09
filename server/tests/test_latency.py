@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 import wave
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from pipecat.frames.frames import (
@@ -188,3 +190,30 @@ def test_cli_reports_malformed_wav_without_traceback(monkeypatch, tmp_path, caps
         latency.main()
     assert error.value.code == 1
     assert "Latency harness:" in capsys.readouterr().err
+
+
+def test_tts_startup_refusal_exits_before_pipeline_start(monkeypatch, capsys):
+    from server.tts import MINIMUM
+
+    monkeypatch.setenv("AMES_STUB", "1")
+    stt = SimpleNamespace(cleanup=AsyncMock())
+    model = SimpleNamespace(close=AsyncMock())
+    voice = SimpleNamespace(
+        prepare=AsyncMock(
+            side_effect=RuntimeError(f"This Mac is too slow for her voice. Minimum: {MINIMUM}")
+        ),
+        cleanup=AsyncMock(),
+    )
+    monkeypatch.setattr(latency, "model_services", lambda: (stt, model))
+    monkeypatch.setattr(latency, "tts_service", lambda: voice)
+    worker = Mock()
+    monkeypatch.setattr(latency, "PipelineWorker", worker)
+    monkeypatch.setattr(sys, "argv", ["server.latency"])
+    with pytest.raises(SystemExit) as error:
+        latency.main()
+    assert error.value.code == 1
+    assert MINIMUM in capsys.readouterr().err
+    worker.assert_not_called()
+    stt.cleanup.assert_awaited_once()
+    model.close.assert_awaited_once()
+    voice.cleanup.assert_awaited_once()

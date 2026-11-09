@@ -12,6 +12,7 @@ from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
 
 from server.llm import configure_models
+from server.mlx_runtime import MLX_LOCK
 
 
 class ParakeetSTTService(SegmentedSTTService):
@@ -24,7 +25,6 @@ class ParakeetSTTService(SegmentedSTTService):
         )
         self.model_path = model_path
         self.model = None
-        # shortcut: STT has its own worker until S3c (#25) unifies MLX execution.
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ames-stt")
 
     @property
@@ -32,26 +32,28 @@ class ParakeetSTTService(SegmentedSTTService):
         return False
 
     def load_model(self):
-        if self.model is not None:
-            return
-        configure_models()
-        import mlx.core as mx
-        from mlx_audio.stt.utils import load_model
+        with MLX_LOCK:
+            if self.model is not None:
+                return
+            configure_models()
+            import mlx.core as mx
+            from mlx_audio.stt.utils import load_model
 
-        self.mx = mx
-        self.model = load_model(str(self.model_path), model_type="parakeet")
-        mx.eval(self.model.parameters())
-        mx.synchronize()
+            self.mx = mx
+            self.model = load_model(str(self.model_path), model_type="parakeet")
+            mx.eval(self.model.parameters())
+            mx.synchronize()
 
     async def start(self, frame):
         await asyncio.get_running_loop().run_in_executor(self.executor, self.load_model)
         await super().start(frame)
 
     def transcribe(self, audio):
-        signal = np.frombuffer(audio, dtype="<i2").astype(np.float32) / 32768
-        result = self.model.generate(self.mx.array(signal))
-        self.mx.synchronize()
-        return result.text
+        with MLX_LOCK:
+            signal = np.frombuffer(audio, dtype="<i2").astype(np.float32) / 32768
+            result = self.model.generate(self.mx.array(signal))
+            self.mx.synchronize()
+            return result.text
 
     async def run_stt(self, audio):
         await self.start_processing_metrics()
