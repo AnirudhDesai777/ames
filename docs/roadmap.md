@@ -8,6 +8,10 @@ Small follow-ups deferred from v1: a Settings panel, Firefox and Safari support,
 
 ## v1.1
 
+### Memory (#30, #31, #32)
+
+Memory across sessions, as designed in design section 6: idle-time fact extraction (#30), retrieval into the late block (#31), and the memory API and panel (#32). The storage layer from #27 is already merged and unused in v1. When memory lands, wiring adds turn rows, the retrieval slot and the idle signal, the crisis exit marks stored turns, and the memory gate (design 10.3) and the extraction load run (10.5) apply. bolt-e4b scored 0.28 precision and 0.10 recall on extraction in the bake-off, so extraction quality needs work first: a tighter prompt, fewer predicates, or fine-tuning.
+
 ### NVIDIA support (#6)
 
 Docker Compose for Linux and Windows (WSL2) machines with an NVIDIA GPU. Docker cannot reach the Apple GPU, so Macs keep the native install. Needs a runtime that serves both platforms, such as llama.cpp, and a GGUF export of any fine-tuned adapter.
