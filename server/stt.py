@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
+from loguru import logger
 from pipecat.frames.frames import ErrorFrame, TranscriptionFrame
 from pipecat.services.settings import STTSettings
 from pipecat.services.stt_service import SegmentedSTTService
@@ -64,6 +65,7 @@ class ParakeetSTTService(SegmentedSTTService):
             if text.strip():
                 yield TranscriptionFrame(text, self._user_id, time_now_iso8601(), Language.EN)
         except Exception:
+            logger.exception("local_transcription_failed")
             yield ErrorFrame("local_transcription_failed")
         finally:
             await self.stop_processing_metrics()
