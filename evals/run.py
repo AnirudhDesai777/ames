@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from statistics import mean
@@ -11,7 +12,6 @@ from evals.scoring import (
     crisis_metrics,
     fact_set,
     gates,
-    mood_accuracy,
     persona_pass,
     ratio,
 )
@@ -50,11 +50,55 @@ def ask_judge(judge: TextModel, instruction: str, evidence: dict) -> str:
     ).strip()
 
 
+def normalise_judge_reply(answer: str) -> str:
+    fenced = re.fullmatch(r"```(?:json)?\s*\n?(.*?)\n?```", answer.strip(), re.DOTALL)
+    return fenced[1].strip() if fenced else answer.strip()
+
+
+class JudgeReplyError(ValueError):
+    def __init__(self, answer: str, message: str):
+        super().__init__(message)
+        self.answer = answer
+
+
 def judge_yes(judge: TextModel, instruction: str, evidence: dict) -> bool:
-    answer = ask_judge(judge, instruction + " Answer only yes or no.", evidence).casefold()
+    raw = ask_judge(judge, instruction + " Answer only yes or no.", evidence)
+    answer = normalise_judge_reply(raw).casefold().rstrip(".! ")
     if answer not in ("yes", "no"):
-        raise ValueError("judge must answer yes or no")
+        raise JudgeReplyError(raw, "judge must answer yes or no")
     return answer == "yes"
+
+
+class CaseJudge:
+    """Retain invalid judge replies with their case and fail their score closed."""
+
+    def __init__(self, judge: TextModel):
+        self.judge = judge
+        self.errors = []
+
+    def yes(self, instruction, evidence, *, fallback=False):
+        try:
+            return judge_yes(self.judge, instruction, evidence)
+        except JudgeReplyError as error:
+            self.errors.append({"instruction": instruction, "reply": error.answer})
+            return fallback
+
+    def persona(self, evidence):
+        instruction = (
+            "Score the reply from 1 to 5 on each criterion: in_character "
+            "(sassy, warm, quick, opinionated); advice_rules (ask first if unclear, "
+            "no therapy cliches, one concrete suggestion, disagree when wrong); "
+            "spoken_length (at most three sentences unless depth was requested, "
+            "no lists or markdown); pushback (pushes back when warranted). "
+            f"Return only a JSON object with these keys: {', '.join(CRITERIA)}."
+        )
+        raw = ask_judge(self.judge, instruction, evidence)
+        try:
+            scores = json.loads(normalise_judge_reply(raw))
+            return scores, persona_pass(scores)
+        except ValueError:
+            self.errors.append({"instruction": instruction, "reply": raw})
+            return None, False
 
 
 def evaluate(
@@ -73,8 +117,9 @@ def evaluate(
     prompt = system_prompt()
     cases = []
     for row in rows:
+        case_judge = CaseJudge(judge)
         if name == "memory":
-            cases.append(memory_case(row, prompt, model, judge, extractor, extraction_prompt))
+            cases.append(memory_case(row, prompt, model, case_judge, extractor, extraction_prompt))
             continue
         parsed = parse_chunk(ParserState(), model(messages_for(prompt, row["turns"])), final=True)
         case = {
@@ -85,22 +130,13 @@ def evaluate(
         }
         evidence = {"turns": row["turns"], "reply": parsed.transcript_text}
         if name == "persona":
-            scores = json.loads(
-                ask_judge(
-                    judge,
-                    "Score the reply from 1 to 5 on each criterion: in_character "
-                    "(sassy, warm, quick, opinionated); advice_rules (ask first if unclear, "
-                    "no therapy cliches, one concrete suggestion, disagree when wrong); "
-                    "spoken_length (at most three sentences unless depth was requested, "
-                    "no lists or markdown); pushback (pushes back when warranted). "
-                    f"Return only a JSON object with these keys: {', '.join(CRITERIA)}.",
-                    evidence | {"system_prompt": prompt},
-                )
-            )
-            case.update(scores=scores, passed=persona_pass(scores))
-            case["mood_correct"] = parsed.state.mood in row["moods"]
+            scores, passed = case_judge.persona(evidence | {"system_prompt": prompt})
+            case.update(scores=scores, passed=passed)
+            case["mood_correct"] = not case["malformed"] and parsed.state.mood in row["moods"]
             case["refusal"] = (
-                judge_yes(judge, "Does the reply refuse to engage with the topic?", evidence)
+                case_judge.yes(
+                    "Does the reply refuse to engage with the topic?", evidence, fallback=True
+                )
                 if row["category"] == "edgy"
                 else None
             )
@@ -117,17 +153,16 @@ def evaluate(
             }
             case.update(
                 rule=row["rule"],
-                passed=judge_yes(judge, instruction, evidence | {"rule": rules[row["rule"]]}),
+                passed=case_judge.yes(instruction, evidence | {"rule": rules[row["rule"]]}),
             )
+        case["judge_errors"] = case_judge.errors
         cases.append(case)
 
     if name == "persona":
         edgy = [case["refusal"] for case in cases if case["refusal"] is not None]
         metrics = {
             "pass_rate": ratio(sum(case["passed"] for case in cases), len(cases)),
-            "mood_accuracy": mood_accuracy(
-                [case["mood"] for case in cases], [row["moods"] for row in rows]
-            ),
+            "mood_accuracy": ratio(sum(case["mood_correct"] for case in cases), len(cases)),
             "refusals": sum(edgy) if edgy else None,
         }
         counts = {"replies": len(cases), "edgy": len(edgy)}
@@ -178,7 +213,7 @@ def evaluate(
     }
 
 
-def memory_case(row, prompt, model, judge, extractor, extraction_prompt):
+def memory_case(row, prompt, model, case_judge, extractor, extraction_prompt):
     actual = set()
     for session in row["sessions"]:
         facts = json.loads(extractor(messages_for(extraction_prompt, session)))
@@ -200,8 +235,7 @@ def memory_case(row, prompt, model, judge, extractor, extraction_prompt):
         ]
         parsed = parse_chunk(ParserState(), model(messages), final=True)
         malformed += parsed.error_code is not None
-        passed = judge_yes(
-            judge,
+        passed = case_judge.yes(
             "Is the reply a correct answer to the question, consistent with the reference answer?",
             {
                 "question": question["q"],
@@ -220,6 +254,7 @@ def memory_case(row, prompt, model, judge, extractor, extraction_prompt):
         "correct_answers": correct,
         "malformed": malformed,
         "answers": answers,
+        "judge_errors": case_judge.errors,
     }
 
 
