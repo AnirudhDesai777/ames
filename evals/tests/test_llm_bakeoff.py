@@ -256,7 +256,7 @@ def test_template_exception_marks_candidate_error(monkeypatch):
     assert not any(call[0] == "stream" for call in calls)
 
 
-def test_extraction_failure_preserves_finished_quality_sets():
+def test_extraction_failure_records_cases_without_aborting_candidate():
     class BadExtractor(bake.StubModel):
         def __call__(self, messages):
             if messages[0]["content"].startswith("Extract"):
@@ -264,6 +264,12 @@ def test_extraction_failure_preserves_finished_quality_sets():
             return super().__call__(messages)
 
     result = bake.bakeoff("qwen3-4b", stub=True, factory=BadExtractor)
-    assert result["status"] == "ERROR"
-    assert set(result["quality"]) == {"persona", "crisis", "guardrail"}
+    assert result["status"] == "FAIL"
+    assert set(result["quality"]) == set(bake.run.SETS)
+    for run in result["quality"]["memory"]["runs"]:
+        assert run["counts"]["extracted"] == 0
+        assert run["metrics"]["recall"] == 0
+        assert all(
+            case["extraction_errors"][0]["reply"] == "invalid extraction" for case in run["cases"]
+        )
     assert result["performance"]["turns"]

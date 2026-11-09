@@ -330,11 +330,60 @@ def test_invalid_judge_output_is_recorded_per_case(answer):
     assert all(case["judge_errors"][0]["reply"] == answer for case in result["cases"])
 
 
-@pytest.mark.parametrize("answer", ["not json", "{}", '[{"subject":"user"}]'])
-def test_invalid_extraction_is_an_error(answer):
-    row = {"id": "m1", "split": "dev", "sessions": [[]], "gold_facts": [], "questions": []}
-    with pytest.raises(ValueError):
-        evaluate("memory", [row], extractor=lambda messages: answer)
+@pytest.mark.parametrize("tag", ["", "json"])
+def test_memory_normalises_fenced_extractor_reply(tag):
+    fact = {"subject": "user", "predicate": "likes", "object": "tea"}
+    row = {
+        "id": "m1",
+        "split": "dev",
+        "sessions": [[]],
+        "gold_facts": [fact],
+        "questions": [],
+    }
+    result = evaluate(
+        "memory", [row], extractor=lambda messages: f"```{tag}\n{json.dumps([fact])}\n```"
+    )
+    case = result["cases"][0]
+    assert case["extracted"] == case["correct_facts"] == 1
+    assert case["extraction_errors"] == []
+
+
+@pytest.mark.parametrize(
+    "answer", ["not json", "```json\nnot json\n```", "{}", '[{"subject":"user"}]']
+)
+def test_invalid_extraction_fails_only_its_case(answer):
+    fact = {"subject": "user", "predicate": "likes", "object": "tea"}
+    row = {
+        "id": "m1",
+        "split": "dev",
+        "sessions": [[], [], []],
+        "gold_facts": [fact],
+        "questions": [{"q": "What do I like?", "answer": "Tea"}],
+    }
+    replies = iter([json.dumps([fact]), answer, json.dumps([fact])])
+    seen = []
+
+    def model(messages):
+        seen.append(messages[1]["content"])
+        return "<state mood=neutral crisis=0>Tea."
+
+    result = evaluate(
+        "memory",
+        [row, row | {"id": "m2", "sessions": [[]]}],
+        model=model,
+        judge=lambda messages: "yes",
+        extractor=lambda messages: next(replies),
+    )
+    failed, following = result["cases"]
+    assert failed["extracted"] == failed["correct_facts"] == 0
+    assert failed["extraction_errors"][0]["session"] == 1
+    assert failed["extraction_errors"][0]["reply"] == answer
+    assert failed["extraction_errors"][0]["error"]
+    assert seen[0] == "Remembered facts: []"
+    assert following["extracted"] == following["correct_facts"] == 1
+    assert following["extraction_errors"] == []
+    assert result["metrics"]["recall"] == 0.5
+    assert result["status"] == "FAIL"
 
 
 def test_cli_reports_output_errors(tmp_path):

@@ -215,11 +215,18 @@ def evaluate(
 
 def memory_case(row, prompt, model, case_judge, extractor, extraction_prompt):
     actual = set()
-    for session in row["sessions"]:
-        facts = json.loads(extractor(messages_for(extraction_prompt, session)))
-        if not isinstance(facts, list):
-            raise ValueError("extractor must return a JSON list of triples")
-        actual.update(fact_set(facts))
+    extraction_errors = []
+    for index, session in enumerate(row["sessions"]):
+        raw = extractor(messages_for(extraction_prompt, session))
+        try:
+            facts = json.loads(normalise_judge_reply(raw))
+            if not isinstance(facts, list):
+                raise ValueError("extractor must return a JSON list of triples")
+            actual.update(fact_set(facts))
+        except ValueError as error:
+            extraction_errors.append({"session": index, "reply": raw, "error": str(error)})
+            actual.clear()
+            break
     expected = fact_set(row["gold_facts"])
     memory = [
         dict(zip(("subject", "predicate", "object"), fact, strict=True)) for fact in sorted(actual)
@@ -254,6 +261,7 @@ def memory_case(row, prompt, model, case_judge, extractor, extraction_prompt):
         "correct_answers": correct,
         "malformed": malformed,
         "answers": answers,
+        "extraction_errors": extraction_errors,
         "judge_errors": case_judge.errors,
     }
 
