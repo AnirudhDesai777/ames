@@ -8,6 +8,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from evals import llm_bakeoff as bake
+from server.llm import MAX_REPLY_TOKENS
 from server.prompt import HISTORY_TOKENS, load_system_prompt
 
 
@@ -28,6 +29,7 @@ def test_stub_bakeoff_has_three_gates_runs_and_capped_probe(candidate, monkeypat
     assert len(result["judge_prompt_source_sha256"]) == 64
     assert len(result["judge_prompts_sha256"]) == 5
     assert result["sampling"]["temperature"] > 0
+    assert result["sampling"]["max_tokens"] == MAX_REPLY_TOKENS == 256
     for quality in result["quality"].values():
         assert len(quality["runs"]) == 3
         assert all(run["split"] == "heldout" for run in quality["runs"])
@@ -194,6 +196,7 @@ def test_real_adapter_uses_cache_returned_prefix_and_sampling(monkeypatch, trimm
     assert model.samples[-1]["reused_prefix_tokens"] == (2 if trimmable else 0)
     stream = [call for call in calls if call[0] == "stream"][-1]
     assert stream[2]["sampler"] == {"temp": 0.7, "top_p": 0.9}
+    assert stream[2]["max_tokens"] == MAX_REPLY_TOKENS
     assert model.memory()["peak_mlx_bytes"] == 123
 
 
@@ -235,7 +238,7 @@ def test_vlm_loader_is_lazy_and_adapts_decoder_logits(monkeypatch, candidate):
 def test_missing_vlm_only_fails_overlay_candidate(monkeypatch):
     fake_runtime(monkeypatch)
     monkeypatch.setitem(sys.modules, "mlx_vlm", None)
-    with pytest.raises(RuntimeError, match="mlx-vlm==0.7.12"):
+    with pytest.raises(RuntimeError, match="uv run --extra mac --with mlx-vlm==0.7.12"):
         bake.LocalModel(bake.CANDIDATES["lfm3-1b7"], bake.SAMPLING)
     assert bake.LocalModel(bake.CANDIDATES["qwen3-4b"], bake.SAMPLING)
 

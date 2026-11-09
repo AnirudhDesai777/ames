@@ -14,6 +14,7 @@ from statistics import mean
 from evals import run
 from evals.scoring import gates
 from evals.stubs import stub_extractor, stub_judge, stub_model
+from server.llm import MAX_REPLY_TOKENS
 from server.prompt import HISTORY_TOKENS, PromptAssembler, load_system_prompt
 
 # IDs, revisions and loaders approved in issue #12 on 2026-11-08.
@@ -30,7 +31,7 @@ CANDIDATES = {
     "qwen35-9b": ("mlx-community/Qwen3.5-9B-MLX-4bit", "938d891", "lm"),
 }
 JUDGE = ("mlx-community/phi-4-4bit", "fc0f8f2", "lm")
-SAMPLING = {"temperature": 0.7, "top_p": 0.9, "max_tokens": 512}
+SAMPLING = {"temperature": 0.7, "top_p": 0.9, "max_tokens": MAX_REPLY_TOKENS}
 JUDGE_SAMPLING = {"temperature": 0.0, "top_p": 1.0, "max_tokens": 256}
 REPEATS = 3
 
@@ -112,7 +113,8 @@ class LocalModel:
             except ImportError as error:
                 raise RuntimeError(
                     "This candidate needs the bake-off overlay: "
-                    "uv run --with mlx-vlm==0.7.12 python -m evals.llm_bakeoff ..."
+                    "uv run --extra mac --with mlx-vlm==0.7.12 "
+                    "python -m evals.llm_bakeoff ..."
                 ) from error
         import mlx.core as mx
         from huggingface_hub import snapshot_download

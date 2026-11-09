@@ -9,6 +9,7 @@ from threading import Event
 from server.mlx_runtime import MLX_LOCK
 
 MODEL_DIR = Path.home() / "Library/Application Support/Ames/models"
+MAX_REPLY_TOKENS = 256
 
 
 def configure_models():
@@ -51,7 +52,7 @@ class MLXLanguageModel:
                 cache = make_prompt_cache(self.model)
             tokens = list(prompt)
             stream = stream_generate(
-                self.model, self.tokenizer, rest, prompt_cache=cache, max_tokens=256
+                self.model, self.tokenizer, rest, prompt_cache=cache, max_tokens=MAX_REPLY_TOKENS
             )
             mx.synchronize()
         try:
