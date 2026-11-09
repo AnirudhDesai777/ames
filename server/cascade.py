@@ -29,6 +29,7 @@ from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 from pipecat.utils.time import time_now_iso8601
 
 from server.llm import MODEL_DIR, MLXLanguageModel, StubLanguageModel, configure_models
+from server.stt import ParakeetSTTService
 
 
 class StubTranscription(STTService):
@@ -146,19 +147,14 @@ def model_services():
     if platform.system() != "Darwin" or platform.machine() != "arm64":
         raise RuntimeError("Real models require an Apple Silicon Mac; use AMES_STUB=1 for CI")
     configure_models()
-    whisper_path = MODEL_DIR / "whisper-large-v3-turbo"
+    parakeet_path = MODEL_DIR / "parakeet-tdt-0.6b-v2"
     llm_path = os.environ.get("AMES_LLM_MODEL")
-    if not whisper_path.is_dir() or not llm_path:
+    if not parakeet_path.is_dir() or not llm_path:
         raise RuntimeError(
-            "Install local Whisper large-v3-turbo files in the models directory "
+            f"Install local Parakeet files in {parakeet_path} "
             "and set AMES_LLM_MODEL to a local mlx-lm model directory"
         )
-    from pipecat.services.whisper.stt import WhisperSTTServiceMLX
-
-    stt = WhisperSTTServiceMLX(
-        settings=WhisperSTTServiceMLX.Settings(model=str(whisper_path)),
-        sample_rate=16000,
-    )
+    stt = ParakeetSTTService(parakeet_path)
     return stt, MLXLanguageModel(Path(llm_path).expanduser())
 
 

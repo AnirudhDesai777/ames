@@ -1,6 +1,4 @@
 import asyncio
-import sys
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -115,23 +113,22 @@ def test_stub_selection(monkeypatch):
     assert isinstance(model, StubLanguageModel)
 
 
-def test_real_selection_uses_local_whisper_and_model_paths(tmp_path, monkeypatch):
+def test_real_selection_uses_local_parakeet_and_model_paths(tmp_path, monkeypatch):
     monkeypatch.delenv("AMES_STUB", raising=False)
     monkeypatch.setattr(cascade.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(cascade.platform, "machine", lambda: "arm64")
     monkeypatch.setenv("HF_HOME", "unused")
     monkeypatch.setenv("HF_HUB_OFFLINE", "0")
     monkeypatch.setattr(cascade, "MODEL_DIR", tmp_path)
-    whisper_path = tmp_path / "whisper-large-v3-turbo"
-    whisper_path.mkdir()
+    parakeet_path = tmp_path / "parakeet-tdt-0.6b-v2"
+    parakeet_path.mkdir()
     monkeypatch.setenv("AMES_LLM_MODEL", str(tmp_path))
-    whisper = Mock()
-    module = SimpleNamespace(WhisperSTTServiceMLX=whisper)
-    monkeypatch.setitem(sys.modules, "pipecat.services.whisper.stt", module)
+    parakeet = Mock()
+    monkeypatch.setattr(cascade, "ParakeetSTTService", parakeet)
     stt, model = cascade.model_services()
     assert isinstance(model, MLXLanguageModel)
-    whisper.Settings.assert_called_once_with(model=str(whisper_path))
-    whisper.assert_called_once_with(settings=whisper.Settings.return_value, sample_rate=16000)
+    parakeet.assert_called_once_with(parakeet_path)
+    assert stt is parakeet.return_value
     model.executor.shutdown()
 
 
@@ -146,5 +143,5 @@ def test_real_selection_requires_mac_and_local_files(monkeypatch, tmp_path):
     monkeypatch.setenv("HF_HUB_OFFLINE", "0")
     monkeypatch.setattr(cascade, "MODEL_DIR", tmp_path)
     monkeypatch.delenv("AMES_LLM_MODEL", raising=False)
-    with pytest.raises(RuntimeError, match="Install local Whisper"):
+    with pytest.raises(RuntimeError, match="Install local Parakeet.*parakeet-tdt-0.6b-v2"):
         cascade.model_services()

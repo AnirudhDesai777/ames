@@ -92,7 +92,9 @@ import importlib.abc
 import sys
 class BlockModels(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
-        if fullname.split('.')[0] in {'mlx', 'mlx_lm', 'mlx_whisper', 'faster_whisper', 'torch'}:
+        if fullname.split('.')[0] in {
+            'mlx', 'mlx_audio', 'mlx_lm', 'mlx_whisper', 'faster_whisper', 'torch'
+        }:
             raise AssertionError(f'Model import attempted: {fullname}')
 sys.meta_path.insert(0, BlockModels())
 from server.latency import main
