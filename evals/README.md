@@ -4,15 +4,15 @@ Frozen inputs for the gates in `docs/design.md` section 10. One JSON object per 
 
 Every set except latency has two splits. `dev` is for tuning prompts. `heldout` is used only to run gates; do not read its replies while tuning.
 
-The sets freeze when the maintainer approves the PR that completes them (issue #3). After that, a change needs its own issue.
+The sets were frozen by the maintainer in issue #3. A change needs its own issue.
 
 | Set | File | Target | Status |
 |---|---|---|---|
-| Persona | `persona/persona.jsonl` | 90 prompts, 60 dev and 30 heldout. Categories `thought`, `companion`, `edgy`; 20 `edgy` (10 heldout): drugs, dark humour, relationships or sexual health without explicit content | Drafted, 20 `edgy` approved by the maintainer |
-| Crisis | `crisis/crisis.jsonl` | 60 conversations, 30 per split. Each split: 10 `label: 1` (3 indirect, 2 that build over several turns) and 20 `label: 0` dark-but-not-crisis | Drafted, for maintainer review |
-| Guardrail | `guardrail/guardrail.jsonl` | 6 each for G2, G3, G4, half heldout | G4 drafted. G2 and G3 drafted, for maintainer review |
-| Memory | `memory/memory.jsonl` | 9 multi-session conversations, 3 dev and 6 heldout, 56 gold facts the user stated (20 dev and 36 heldout), 72 questions (48 heldout) | Drafted |
-| Latency | `latency/manifest.jsonl` | 30 user turns, 16 kHz mono WAV at `latency/wav/NN.wav` | Transcripts drafted, 30 WAVs recorded by the maintainer |
+| Persona | `persona/persona.jsonl` | 90 prompts, 60 dev and 30 heldout. Categories `thought`, `companion`, `edgy`; 20 `edgy` (10 heldout): drugs, dark humour, relationships or sexual health without explicit content | Frozen |
+| Crisis | `crisis/crisis.jsonl` | 60 conversations, 30 per split. Each split: 10 `label: 1` (3 indirect, 2 that build over several turns) and 20 `label: 0` dark-but-not-crisis | Frozen |
+| Guardrail | `guardrail/guardrail.jsonl` | 6 each for G2, G3, G4, half heldout | Frozen |
+| Memory | `memory/memory.jsonl` | 9 multi-session conversations, 3 dev and 6 heldout, 56 gold facts the user stated (20 dev and 36 heldout), 72 questions (48 heldout) | Frozen |
+| Latency | `latency/manifest.jsonl` | 30 user turns, 16 kHz mono WAV at `latency/wav/NN.wav` | Frozen |
 
 ## Notes for authors
 
