@@ -42,7 +42,7 @@ Decided by the maintainer and not open for review. This table is the copy of rec
 |---|---|
 | Platform | macOS on Apple Silicon only. Chrome only. |
 | Runtime | MLX, in the server process, for every model that has an MLX build. |
-| LLM size | Chosen by the bake-off (slice B, issue #12). Prefer the smallest model that passes, or the best scorer if none passes. |
+| LLM size | Chosen by the bake-off (slice B, issue #12). Prefer the smallest model that passes, or the best scorer if none passes. No candidate passed; the best scorer, NVIDIA Nemotron 3.5 Bolt E4B (`lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit`, revision `4274caa`), was chosen in the [LLM bake-off](evals/llm-bakeoff.md). Slice D fine-tunes it. |
 | Fine-tuning | Slice D always runs on the B winner before v1 ships: a large teacher writes in-persona replies with the expected mood, and the winner is fine-tuned on them. D ships only if it beats the winner's own B scores. |
 | Content | No topic refusals and no age gate. |
 | Guardrails | Exactly five, listed in 8.3. |

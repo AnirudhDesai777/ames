@@ -1,6 +1,6 @@
 # LLM bake-off
 
-Issue #12 delivers the runner and this empty results template. Measurements and selection are pending the maintainer's reference-Mac run. The reference machine is a MacBook Pro with an Apple M4 Pro and 24 GB RAM.
+Issue #12 delivers the runner, the results of the maintainer's reference-Mac run and the maintainer's selection. The reference machine is a MacBook Pro with an Apple M4 Pro and 24 GB RAM.
 
 ## Run
 
@@ -128,8 +128,10 @@ TTFT mean covers all turns, including the cold first turn and post-cap turns. No
 
 ## Maintainer selection
 
-- Agreed margin from baseline, fixed before comparing scores, is pending.
-- Chosen model and reasoning are pending.
-- License decisions for Gemma terms, NVIDIA Open Model License and LFM3 are pending before selection/L2. LFM3's commercial-use revenue limit requires a maintainer decision.
-- The chosen model and agreed margin must be recorded in Notion after the real run.
+- Chosen model: bolt-e4b (`lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit`, revision `4274caa`), picked by the maintainer on 2026-11-09. No candidate passes the gates, so the rule "the best scorer if none passes" applies. bolt-e4b leads gemma4-e4b on persona pass (0.73 against 0.68), mood (0.67 against 0.63) and every memory measure, and ties it on crisis and guardrails.
+- Agreed margin from baseline: none applicable. The qwen35-9b baseline scores below both finalists, so no margin can decide between a small model and the baseline.
+- License sign-off for the NVIDIA Open Model License is still required before shipping (slice L2). Gemma terms and LFM3's revenue limit no longer block selection because neither model was picked.
+- Post-cap prefill misses the 150 ms budget (4111 ms for bolt-e4b). Chunked history trimming is issue #86 because it changes design 5.2.
+- Both finalists fail G4 case guardrail-g4-005. The frozen set stays unchanged unless an issue is filed.
+- The chosen model and margin are recorded in Notion.
 - Distillation #29 runs on the pick afterwards.
