@@ -4,7 +4,11 @@ A local-only voice companion that runs in your browser. Every model runs on your
 
 Status: S1b foundation. The repository has a model-free Pipecat SmallWebRTC audio
 echo, an authenticated loopback HTTP app, and a browser connection flow.
-Conversation models are not implemented yet.
+The recorded cascade also runs local Parakeet, mlx-lm, and Qwen TTS; live
+conversation wiring is a later slice.
+
+The planned real-voice minimum is Apple Silicon with 24 GB RAM and a TTS startup
+real-time factor at most 0.9 (reference: M4 Pro, 24 GB). No fallback voice.
 
 Use Python 3.12 with uv and Node 22.18 or newer within Node 22:
 

@@ -58,12 +58,13 @@ also checks the underlying aiortc configuration, where `None` would enable STUN.
 ## Recorded cascade and latency
 
 `server.cascade` uses local Parakeet TDT 0.6B v2 MLX transcription,
-a plain single-user-turn prompt, an in-process mlx-lm service, Pipecat sentence
-aggregation, and tone-only stub TTS. The HTTP app still runs the S1 echo;
-live turn detection and the later conversation wiring are outside this harness.
-No persona, memory retrieval, extraction scheduling, or real speech synthesis
-runs here. Parakeet loads once at pipeline startup and transcribes VAD segments
-on one worker thread. Empty transcripts produce no frame.
+a plain prompt, an in-process mlx-lm service, the control-token sanitizer,
+Pipecat sentence aggregation, and Qwen3-TTS 1.7B CustomVoice 8bit speech.
+`AMES_STUB=1` selects model-free transcription, generation, and tone TTS.
+Parakeet loads once at pipeline startup and transcribes VAD segments. Empty
+transcripts produce no frame. Each recorded replay starts with empty history.
+The HTTP app still runs the S1 echo; persona, memory, and live conversation
+wiring belong to W.
 
 From the repository root:
 
@@ -92,9 +93,11 @@ For the manual run on the reference M4 Pro Mac with 24 GB RAM:
 2. Run `uv sync --locked --extra mac`.
 3. Place the complete Parakeet TDT 0.6B v2 MLX model directory at
    `~/Library/Application Support/Ames/models/parakeet-tdt-0.6b-v2/`.
-   Place a complete mlx-lm model directory under the same `models/` directory.
-   Model selection and pinned downloads are later slices; this command never
-   downloads weights.
+   Place Qwen3-TTS CustomVoice 8bit at
+   `~/Library/Application Support/Ames/models/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit/`
+   and a complete mlx-lm model directory under the same `models/` directory.
+   Use the revisions recorded in `docs/models.md`. This command never downloads
+   weights.
 4. Run with the Mac idle, using the local LLM directory:
 
    ```sh
@@ -103,7 +106,7 @@ For the manual run on the reference M4 Pro Mac with 24 GB RAM:
    ```
 
 Real mode requires every listed WAV and fails if files are missing or malformed.
-It still uses stub TTS, so it cannot validate the real voice budget. No microphone
+It uses real Qwen TTS after its startup speed gate. No microphone
 or browser is needed during replay. Use `--manifest PATH` to replay another
 manifest with the same schema; WAV paths resolve from the repository root.
 
@@ -111,11 +114,64 @@ Before importing model libraries the server sets `HF_HOME` to the models
 directory and `HF_HUB_OFFLINE=1`. The LLM uses the tokenizer's chat template with
 `enable_thinking=False`. It keeps independent one-entry prefix caches for
 `conversation` and `extraction`; `model.tokens(messages, "extraction")` uses the
-latter without evicting the former. A single worker thread serializes model
-access and checks cancellation before advancing each token. User speech,
-interruption, and pipeline cancellation stop generation; a ten-second token
-timeout emits an error. A failed or incomplete turn produces no percentile
-report. No transcript or generated text is printed by the harness.
+latter without evicting the former. STT, LLM, and TTS keep their blocking work
+off the event loop and share `server.mlx_runtime.MLX_LOCK`. LLM tokens and TTS
+chunks release that lock between steps, so speech can start before generation
+ends. MLX evaluation is synchronized before the lock is released. Only
+`InterruptionFrame` and `CancelFrame` cancel generation; raw user speech onset
+leaves that decision to Pipecat. A ten-second token timeout emits an error. A
+failed or incomplete turn produces no percentile report. No transcript or generated text is printed by the harness.
+
+## Qwen speech and interruption
+
+Minimum: Apple Silicon with 24 GB RAM and a TTS startup real-time factor at
+most 0.9 (reference: M4 Pro, 24 GB). There is no fallback voice.
+
+`server.tts.QwenTTSService` uses mlx-audio 0.6.1, voice Ryan, English, and
+streaming with a 0.1 s interval. It emits mono PCM16 at 24 kHz. Emotion uses the
+six mood instructions from design section 7; neutral supplies no instruction.
+The sanitizer runs before sentence splitting and strips every recognized inline
+tag. Synthesis begins as soon as the splitter emits the first complete sentence.
+
+Call `await tts.prepare()` before starting a pipeline or accepting a live
+connection. This loads Qwen, warms one fixed sentence, then measures compute time
+divided by generated audio duration for a second synthesis. A factor above 0.9
+or no audio raises `This Mac is too slow for her voice` with the minimum above.
+The latency CLI runs this gate before its worker starts. The service also checks
+it on pipeline start; a successful preparation is reused for that service.
+
+The real cascade includes `barge_in_stages(vad_analyzer)`: Pipecat VAD followed
+by its VAD-only turn-start strategy. Its speech threshold is at least 300 ms,
+rounded up to an analysis window (320 ms for 16 kHz Silero). Transcription
+cannot bypass this threshold. An interruption cancels LLM and TTS workers,
+clears partial text, and lets Pipecat drop queued audio and text. Cancellation
+propagates without waiting for an in-flight MLX step; the worker stops at its
+next token or chunk boundary.
+
+Place `SpokenHistory(history)` after transport output, as the latency harness
+does. Each completed sentence flushes trailing transport audio before its text
+receipt. Only receipts that survive the playback queue enter history; a cut
+sentence and queued sentences do not. Transport writes are the server's playback
+boundary; browser playout and echo cancellation still need the manual check.
+The recorded harness uses a plain prompt. W will supply the capped persona
+prompt and connect these stages to the HTTP session.
+
+Run the model-free acceptance checks:
+
+```sh
+AMES_STUB=1 uv run --locked pytest -q server/tests/test_tts.py server/tests/test_cascade.py server/tests/test_mlx_runtime.py
+```
+
+Manual checks on the reference Mac, after W connects live conversations:
+
+- Use Chrome with echo cancellation enabled and speakers playing Ames's speech.
+  Her own voice must not interrupt her.
+- A sound shorter than 300 ms must leave her speaking. Sustained user speech
+  must stop outgoing audio within 150 ms of the interruption decision.
+- Interrupt part-way through a sentence and inspect the next prompt: only whole
+  sentences that completed playback may remain in her history.
+- Check the real startup gate and listen to all six moods. Instruction rendering
+  was not rated in the bake-off.
 
 ## Conversation prompt assembly
 
@@ -208,9 +264,8 @@ and finish with `parse_chunk(state, "", final=True)`. Discard the state when a
 reply ends or is interrupted. No state is shared between replies.
 
 The initial `<state mood=... crisis=...>` sets `state.mood` and `state.crisis`
-without reaching either output. Before it is recognized, only prefixes of the
-six allowed inline tags or a valid control token wait across chunks. Missing or
-malformed control tokens default to neutral and 0, then follow the body rules.
+without reaching either output. Before it is recognized, only prefixes of a
+valid control token wait across chunks. Missing or malformed control tokens default to neutral and 0, then follow the body rules.
 `error_code` reports `control_token_missing` or `control_token_malformed` once
 per reply. The caller must log only this code, never text or parser state.
 
@@ -222,17 +277,18 @@ scanning continues after it. Unfinished candidates are emitted as ordinary text
 at the end. Literal text such as `3 < 5`, `x < y and y > z` and `<3 you` is
 preserved without waiting for the reply to end.
 
-Feed `tts_text` into the sentence splitter before TTS. The six inline tags listed
-in design section 7 reach TTS and are omitted from `transcript_text`. Other
-well-formed tags, such as `<bogus>`, `<smile>` and `</laugh>`, are removed from
-both outputs. Asterisks are removed only when
+Feed `tts_text` into the sentence splitter before TTS. No inline tags are
+allowed. All recognized well-formed tags, including `<laugh>`, `<sigh>`,
+`<bogus>`, `<smile>` and `</laugh>`, are removed from both outputs because Qwen
+does not accept inline tags. Asterisks are removed only when
 opening a span (start, whitespace or punctuation before; non-space after) or
 closing one (non-space before; end, whitespace or punctuation after). Words are
 preserved: `*really*` becomes `really` and `*waves*` becomes `waves`, while `2*3`,
 `a * b` and `* item` stay unchanged. At most one trailing `*` waits across chunks
 for lookahead. Send `transcript_text` to the visible transcript. Ordinary spacing
-after the leading control token is preserved. Pipeline wiring and the crisis
-exit belong to later slices; this module only parses the crisis flag.
+after the leading control token is preserved. `ReplySanitizer` wires the parser
+into the cascade. The crisis exit belongs to a later slice; this module only
+parses the crisis flag.
 
 Run the chunk-boundary, malformed-token, and transcript checks without models:
 

@@ -7,7 +7,7 @@ from string import punctuation
 
 MOODS = ("neutral", "amused", "excited", "soft", "annoyed", "concerned")
 CONTROL_TOKEN = re.compile(r"<state mood=(" + "|".join(MOODS) + r") crisis=([01])>")
-ALLOWED_TAGS = frozenset(("<laugh>", "<chuckle>", "<sigh>", "<gasp>", "<groan>", "<yawn>"))
+ALLOWED_TAGS = frozenset()
 TAG_SHAPE = re.compile(r"<(?:[A-Za-z/][A-Za-z0-9_=-]*|state[A-Za-z0-9_= -]*)")
 MARKUP = ALLOWED_TAGS | {
     f"<state mood={mood} crisis={crisis}>" for mood in MOODS for crisis in (0, 1)

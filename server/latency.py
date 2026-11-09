@@ -30,7 +30,14 @@ from pipecat.transports.base_output import BaseOutputTransport
 from pipecat.transports.base_transport import TransportParams
 from pipecat.workers.runner import WorkerRunner
 
-from server.cascade import StubTranscription, cascade_stages, model_services
+from server.cascade import (
+    PlainPrompt,
+    SpokenHistory,
+    StubTranscription,
+    cascade_stages,
+    model_services,
+    tts_service,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "evals/latency/manifest.jsonl"
@@ -151,10 +158,26 @@ async def measure(manifest: Path = MANIFEST):
         for record in records
     ]
     stt, model = model_services()
+    tts = tts_service()
+    if hasattr(tts, "prepare"):
+        try:
+            await tts.prepare()
+        except Exception:
+            await stt.cleanup()
+            await tts.cleanup()
+            await model.close()
+            raise
+    prompt = PlainPrompt()
     output = DiscardAudioOutput()
     observer = LatencyObserver(output)
     worker = PipelineWorker(
-        Pipeline([*cascade_stages(stt, model), output]),
+        Pipeline(
+            [
+                *cascade_stages(stt, model, tts=tts, prompt=prompt),
+                output,
+                SpokenHistory(prompt.history),
+            ]
+        ),
         params=PipelineParams(audio_in_sample_rate=16000, audio_out_sample_rate=16000),
         observers=[observer],
         enable_rtvi=False,
@@ -172,6 +195,7 @@ async def measure(manifest: Path = MANIFEST):
         await asyncio.wait_for(ready.wait(), 10)
         # Warm both STT and the conversation cache once, outside reported samples.
         for index in [0, *range(len(records))]:
+            prompt.history.clear()
             observer.started.clear()
             observer.finished.clear()
             observer.failure = None
@@ -213,7 +237,7 @@ def report(results):
     mode = (
         "stub (synthetic audio; not a hardware benchmark)"
         if os.environ.get("AMES_STUB") == "1"
-        else "local models, stub TTS"
+        else "local Parakeet, mlx-lm, Qwen TTS"
     )
     print(f"Latency: {len(results)} turns; {mode}; 1 warm-up excluded")
     print("stage                 p50_ms      p90_ms")

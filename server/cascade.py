@@ -1,11 +1,13 @@
-"""S2a recorded-turn cascade: local STT, a plain prompt, and tone-only TTS."""
+"""Local recorded-turn cascade and reusable speech stages."""
 
 import asyncio
+import math
 import os
 import platform
 from contextlib import aclosing
 from pathlib import Path
 
+from loguru import logger
 from pipecat.frames.frames import (
     AggregatedTextFrame,
     CancelFrame,
@@ -17,7 +19,8 @@ from pipecat.frames.frames import (
     LLMTextFrame,
     TranscriptionFrame,
     TTSAudioRawFrame,
-    UserStartedSpeakingFrame,
+    TTSStoppedFrame,
+    TTSTextFrame,
 )
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
@@ -28,8 +31,10 @@ from pipecat.services.tts_service import TTSService
 from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 from pipecat.utils.time import time_now_iso8601
 
+from server.control_tokens import ParserState, parse_chunk
 from server.llm import MODEL_DIR, MLXLanguageModel, StubLanguageModel, configure_models
 from server.stt import ParakeetSTTService
+from server.tts import MODEL_NAME, QwenTTSService
 
 
 class StubTranscription(STTService):
@@ -43,13 +48,17 @@ class StubTranscription(STTService):
 
 
 class PlainPrompt(FrameProcessor):
+    def __init__(self):
+        super().__init__()
+        # shortcut: this recorded prompt is uncapped; W uses PromptAssembler for live sessions.
+        self.history = []
+
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         await self.push_frame(frame, direction)
         if direction == FrameDirection.DOWNSTREAM and isinstance(frame, TranscriptionFrame):
-            await self.push_frame(
-                LLMContextFrame(LLMContext([{"role": "user", "content": frame.text}]))
-            )
+            self.history.append({"role": "user", "content": frame.text})
+            await self.push_frame(LLMContextFrame(LLMContext([dict(m) for m in self.history])))
 
 
 class LocalLLMService(LLMService):
@@ -74,7 +83,7 @@ class LocalLLMService(LLMService):
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
-        if isinstance(frame, (InterruptionFrame, UserStartedSpeakingFrame, CancelFrame)):
+        if isinstance(frame, (InterruptionFrame, CancelFrame)):
             # System frames run while a context is streaming on the data-frame task.
             if self.generation:
                 self.generation.cancel()
@@ -110,6 +119,73 @@ class LocalLLMService(LLMService):
             await self.push_frame(LLMFullResponseEndFrame())
 
 
+class ReplySanitizer(FrameProcessor):
+    def __init__(self, tts):
+        super().__init__()
+        self.tts = tts
+        self.state = ParserState()
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if direction != FrameDirection.DOWNSTREAM:
+            await self.push_frame(frame, direction)
+            return
+        if isinstance(frame, (LLMFullResponseStartFrame, InterruptionFrame, CancelFrame)):
+            self.state = ParserState()
+            self.tts.mood = "neutral"
+        if isinstance(frame, (LLMTextFrame, LLMFullResponseEndFrame)):
+            result = parse_chunk(
+                self.state,
+                frame.text if isinstance(frame, LLMTextFrame) else "",
+                final=isinstance(frame, LLMFullResponseEndFrame),
+            )
+            self.state = result.state
+            self.tts.mood = result.state.mood
+            if result.error_code:
+                logger.error(result.error_code)
+            if result.tts_text:
+                await self.push_frame(LLMTextFrame(result.tts_text))
+            if isinstance(frame, LLMTextFrame):
+                return
+        await self.push_frame(frame, direction)
+
+
+class SpokenHistory(FrameProcessor):
+    """Place after transport output so receipts follow sent audio, not synthesis."""
+
+    def __init__(self, history):
+        super().__init__()
+        self.history = history
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if direction == FrameDirection.DOWNSTREAM and isinstance(frame, TTSTextFrame):
+            if frame.append_to_context and frame.text.strip():
+                if self.history and self.history[-1]["role"] == "assistant":
+                    self.history[-1]["content"] += " " + frame.text.strip()
+                else:
+                    self.history.append({"role": "assistant", "content": frame.text.strip()})
+        await self.push_frame(frame, direction)
+
+
+def barge_in_stages(vad_analyzer):
+    from pipecat.processors.audio.vad_processor import VADProcessor
+    from pipecat.turns.user_start import VADUserTurnStartStrategy
+    from pipecat.turns.user_turn_processor import UserTurnProcessor
+    from pipecat.turns.user_turn_strategies import UserTurnStrategies
+
+    # Pipecat rounds to the nearest VAD window; round up to require at least 300 ms.
+    window = vad_analyzer.num_frames_required() / vad_analyzer.sample_rate
+    start_secs = math.ceil(0.3 / window) * window
+    vad_analyzer.set_params(vad_analyzer.params.model_copy(update={"start_secs": start_secs}))
+    return [
+        VADProcessor(vad_analyzer=vad_analyzer),
+        UserTurnProcessor(
+            user_turn_strategies=UserTurnStrategies(start=[VADUserTurnStartStrategy()])
+        ),
+    ]
+
+
 class SentenceSplitter(FrameProcessor):
     def __init__(self):
         super().__init__()
@@ -125,7 +201,7 @@ class SentenceSplitter(FrameProcessor):
                 sentence = await self.aggregator.flush()
                 if sentence and sentence.text.strip():
                     await self.push_frame(AggregatedTextFrame(sentence.text, sentence.type))
-            elif isinstance(frame, (InterruptionFrame, LLMFullResponseStartFrame)):
+            elif isinstance(frame, (InterruptionFrame, CancelFrame, LLMFullResponseStartFrame)):
                 await self.aggregator.reset()
             await self.push_frame(frame, direction)
 
@@ -133,12 +209,15 @@ class SentenceSplitter(FrameProcessor):
 class ToneTTS(TTSService):
     def __init__(self):
         super().__init__(
-            sample_rate=16000, settings=TTSSettings(model="stub", voice=None, language=None)
+            sample_rate=16000,
+            push_start_frame=True,
+            push_stop_frames=True,
+            settings=TTSSettings(model="stub", voice=None, language=None),
         )
 
     async def run_tts(self, text, context_id):
-        # shortcut: a tone stands in for speech until the chosen TTS lands in S3c.
         yield TTSAudioRawFrame(b"\x00\x20\x00\xe0" * 800, 16000, 1, context_id=context_id)
+        yield TTSStoppedFrame()
 
 
 def model_services():
@@ -158,5 +237,30 @@ def model_services():
     return stt, MLXLanguageModel(Path(llm_path).expanduser())
 
 
-def cascade_stages(stt, model):
-    return [stt, PlainPrompt(), LocalLLMService(model), SentenceSplitter(), ToneTTS()]
+def tts_service():
+    if os.environ.get("AMES_STUB") == "1":
+        return ToneTTS()
+    configure_models()
+    path = MODEL_DIR / MODEL_NAME
+    if not path.is_dir():
+        raise RuntimeError(f"Install local Qwen files in {path}")
+    return QwenTTSService(path)
+
+
+def cascade_stages(stt, model, tts=None, prompt=None):
+    tts = tts if tts is not None else tts_service()
+    prompt = prompt if prompt is not None else PlainPrompt()
+    input_stages = []
+    if os.environ.get("AMES_STUB") != "1":
+        from pipecat.audio.vad.silero import SileroVADAnalyzer
+
+        input_stages = barge_in_stages(SileroVADAnalyzer(sample_rate=16000))
+    return [
+        *input_stages,
+        stt,
+        prompt,
+        LocalLLMService(model),
+        ReplySanitizer(tts),
+        SentenceSplitter(),
+        tts,
+    ]
