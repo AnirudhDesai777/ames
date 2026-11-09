@@ -8,6 +8,7 @@ from contextlib import aclosing
 from pathlib import Path
 
 from loguru import logger
+from pipecat.audio.vad.vad_analyzer import VADAnalyzer
 from pipecat.frames.frames import (
     AggregatedTextFrame,
     CancelFrame,
@@ -23,10 +24,11 @@ from pipecat.frames.frames import (
     TTSTextFrame,
 )
 from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.llm_service import LLMService
 from pipecat.services.settings import LLMSettings, STTSettings, TTSSettings
-from pipecat.services.stt_service import STTService
+from pipecat.services.stt_service import SegmentedSTTService
 from pipecat.services.tts_service import TTSService
 from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 from pipecat.utils.time import time_now_iso8601
@@ -37,7 +39,16 @@ from server.stt import ParakeetSTTService
 from server.tts import MODEL_NAME, QwenTTSService
 
 
-class StubTranscription(STTService):
+class StubVAD(VADAnalyzer):
+    def num_frames_required(self):
+        return 320
+
+    def voice_confidence(self, audio):
+        # shortcut: stub speech uses only Pipecat's volume gate; real mode uses Silero.
+        return 1.0
+
+
+class StubTranscription(SegmentedSTTService):
     transcript = "hi there"
 
     def __init__(self):
@@ -174,7 +185,6 @@ class SpokenHistory(FrameProcessor):
 
 
 def barge_in_stages(vad_analyzer):
-    from pipecat.processors.audio.vad_processor import VADProcessor
     from pipecat.turns.user_start import VADUserTurnStartStrategy
     from pipecat.turns.user_turn_processor import UserTurnProcessor
     from pipecat.turns.user_turn_strategies import UserTurnStrategies
@@ -255,8 +265,9 @@ def tts_service():
 def cascade_stages(stt, model, tts=None, prompt=None, on_state=None):
     tts = tts if tts is not None else tts_service()
     prompt = prompt if prompt is not None else PlainPrompt()
-    input_stages = []
-    if os.environ.get("AMES_STUB") != "1":
+    if os.environ.get("AMES_STUB") == "1":
+        input_stages = [VADProcessor(vad_analyzer=StubVAD(sample_rate=16000))]
+    else:
         from pipecat.audio.vad.silero import SileroVADAnalyzer
 
         input_stages = barge_in_stages(SileroVADAnalyzer(sample_rate=16000))

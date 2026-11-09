@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import wave
 from pathlib import Path
 from unittest.mock import Mock
@@ -20,6 +21,40 @@ from server.live import Conversation, SessionOutput, SessionPrompt, live_stages
 from server.llm import StubLanguageModel
 
 
+async def test_stub_mic_frames_produce_one_turn_per_utterance(monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
+    monkeypatch.setitem(sys.modules, "pipecat.audio.vad.silero", None)
+    events = Mock()
+    conversation = Conversation(events)
+    received, upstream = await run_test(
+        Pipeline(
+            live_stages(
+                StubTranscription(),
+                StubLanguageModel(),
+                ToneTTS(),
+                conversation,
+                DiscardAudioOutput(),
+            )
+        ),
+        frames_to_send=[
+            *[InputAudioRawFrame(bytes(640), 16000, 1) for i in range(50)],
+            *[InputAudioRawFrame(b"\x00\x20\x00\xe0" * 160, 16000, 1) for i in range(50)],
+            *[InputAudioRawFrame(bytes(640), 16000, 1) for i in range(50)],
+            SleepFrame(0.35),
+        ],
+    )
+    assert conversation.turn_id == 1
+    assert [message["role"] for message in conversation.history] == ["user", "ames"]
+    assert conversation.history[0]["content"] == "hi there"
+    finals = [call.args for call in events.transcript.call_args_list if call.args[2]]
+    assert finals == [
+        ("user", "hi there", True, 1),
+        ("ames", conversation.history[1]["content"], True, 1),
+    ]
+    assert sum(isinstance(frame, LLMFullResponseEndFrame) for frame in received) == 1
+    assert any(isinstance(frame, TTSAudioRawFrame) for frame in received)
+
+
 async def test_wav_to_spoken_audio_and_next_prompt(monkeypatch):
     monkeypatch.setenv("AMES_STUB", "1")
     prompts = []
@@ -32,7 +67,7 @@ async def test_wav_to_spoken_audio_and_next_prompt(monkeypatch):
                 yield text
 
     with wave.open(str(Path(__file__).parent / "fixtures/tone.wav"), "rb") as wav:
-        audio = wav.readframes(wav.getnframes())
+        audio = wav.readframes(wav.getnframes()) * 5
     events = Mock()
     conversation = Conversation(events)
     received, upstream = await run_test(
@@ -40,9 +75,11 @@ async def test_wav_to_spoken_audio_and_next_prompt(monkeypatch):
             live_stages(StubTranscription(), Model(), ToneTTS(), conversation, DiscardAudioOutput())
         ),
         frames_to_send=[
-            InputAudioRawFrame(audio, 16000, 1),
+            *[InputAudioRawFrame(audio[i : i + 640], 16000, 1) for i in range(0, len(audio), 640)],
+            *[InputAudioRawFrame(bytes(640), 16000, 1) for i in range(50)],
             SleepFrame(0.35),
-            InputAudioRawFrame(audio, 16000, 1),
+            *[InputAudioRawFrame(audio[i : i + 640], 16000, 1) for i in range(0, len(audio), 640)],
+            *[InputAudioRawFrame(bytes(640), 16000, 1) for i in range(50)],
             SleepFrame(0.35),
         ],
     )
@@ -92,7 +129,7 @@ async def test_crisis_reply_never_reaches_tts_or_history(monkeypatch):
                 StubTranscription(), CrisisModel(), ToneTTS(), conversation, DiscardAudioOutput()
             )
         ),
-        frames_to_send=[InputAudioRawFrame(b"\x00\x40" * 320, 16000, 1)],
+        frames_to_send=[TranscriptionFrame("hi there", "", "now")],
     )
     assert not any(isinstance(frame, (TTSAudioRawFrame, TTSTextFrame)) for frame in received)
     assert conversation.history == [{"role": "user", "content": "hi there"}]
