@@ -328,6 +328,7 @@ def test_failed_bind_preserves_token_without_opening_browser(tmp_path, monkeypat
 
 
 async def test_startup_prepares_llm_before_health_and_closes_resources(tmp_path, monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
     stt, model = app_module.model_services()
     tts = app_module.tts_service()
     model.model = None
@@ -373,6 +374,7 @@ async def test_startup_prepares_llm_before_health_and_closes_resources(tmp_path,
 
 
 async def test_failed_eager_load_cleans_up_without_accepting_offers(tmp_path, monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
     stt, model = app_module.model_services()
     tts = app_module.tts_service()
     model.prepare = AsyncMock(side_effect=RuntimeError("load failed"))
@@ -390,6 +392,7 @@ async def test_failed_eager_load_cleans_up_without_accepting_offers(tmp_path, mo
 
 
 async def test_session_failure_ends_with_private_notice_and_discards_history(monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
     stt, model = app_module.model_services()
     tts = app_module.tts_service()
     model.clear_history = AsyncMock()
