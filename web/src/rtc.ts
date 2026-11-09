@@ -58,7 +58,7 @@ export function startSession(
     disconnected();
   };
   peer.addEventListener("connectionstatechange", () => {
-    if (["failed", "disconnected", "closed"].includes(peer.connectionState)) lost();
+    if (["failed", "closed"].includes(peer.connectionState)) lost();
   });
   peer.addEventListener("track", (event) => {
     if (closed) return;

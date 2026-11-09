@@ -24,6 +24,7 @@ from pipecat.tests.utils import SleepFrame, run_test
 from server import tts
 from server.cascade import LocalLLMService, ReplySanitizer, SentenceSplitter, SpokenHistory
 from server.latency import DiscardAudioOutput
+from server.live import Conversation, SessionOutput
 from server.tts import MINIMUM, MOOD_INSTRUCTIONS, QwenTTSService
 
 
@@ -126,7 +127,8 @@ async def test_sentence_streaming_sanitizes_and_sets_mood(voice):
     assert len([frame for frame in received if isinstance(frame, TTSAudioRawFrame)]) == 2
 
 
-async def test_interruption_stops_audio_and_keeps_only_completed_sentences(voice):
+@pytest.mark.parametrize("live", [False, True])
+async def test_interruption_stops_audio_and_keeps_only_completed_sentences(voice, live):
     voice.service.ready = True
     synthesis = []
     cut = Event()
@@ -144,6 +146,11 @@ async def test_interruption_stops_audio_and_keeps_only_completed_sentences(voice
 
     voice.service.chunks = chunks
     history = [{"role": "user", "content": "hi"}]
+    conversation = Conversation(Mock())
+    conversation.history = history
+    conversation.final = False
+    conversation.turn_id = 1
+    receipts = SessionOutput(conversation) if live else SpokenHistory(history)
     written = []
     interruption_time = []
     interrupted = asyncio.Event()
@@ -163,7 +170,7 @@ async def test_interruption_stops_audio_and_keeps_only_completed_sentences(voice
     output = Output()
     received, upstream = await asyncio.wait_for(
         run_test(
-            Pipeline([voice.service, output, SpokenHistory(history)]),
+            Pipeline([voice.service, output, receipts]),
             frames_to_send=[
                 LLMFullResponseStartFrame(),
                 AggregatedTextFrame("Finished sentence.", "sentence"),
@@ -180,8 +187,13 @@ async def test_interruption_stops_audio_and_keeps_only_completed_sentences(voice
     assert interrupted.is_set() and cut.is_set()
     assert history == [
         {"role": "user", "content": "hi"},
-        {"role": "assistant", "content": "Finished sentence."},
+        {"role": "ames" if live else "assistant", "content": "Finished sentence."},
     ]
+    if live:
+        finals = [
+            call.args for call in conversation.events.transcript.call_args_list if call.args[2]
+        ]
+        assert finals == [("ames", "Finished sentence.", True, 1)]
     assert all(stamp - interruption_time[0] < 0.15 for stamp, audio in written)
     assert [frame.text for frame in received if isinstance(frame, TTSTextFrame)] == [
         "Finished sentence."
@@ -290,3 +302,17 @@ async def test_first_sentence_speaks_while_llm_is_still_generating(voice):
     )
     assert spoken.is_set()
     assert len([frame for frame in received if isinstance(frame, TTSAudioRawFrame)]) == 2
+
+
+async def test_new_session_reuses_loaded_voice_and_startup_gate(voice):
+    voice.service.ready = True
+    session = voice.service.new_session()
+    try:
+        assert session is not voice.service and session.executor is not voice.service.executor
+        assert session.model is voice.service.model and session.mx is voice.service.mx
+        assert session.ready
+        await session.prepare()
+        assert [frame async for frame in session.run_tts("Hello.", "sentence")]
+        voice.loader.assert_called_once()
+    finally:
+        await session.cleanup()

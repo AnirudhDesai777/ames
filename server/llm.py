@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Event
 
 from server.mlx_runtime import MLX_LOCK
+from server.prompt import PromptAssembler
 
 MODEL_DIR = Path.home() / "Library/Application Support/Ames/models"
 MAX_REPLY_TOKENS = 256
@@ -26,18 +27,43 @@ class MLXLanguageModel:
         self.model = None
         self.caches = {}
 
+    def load_model(self):
+        with MLX_LOCK:
+            if self.model is not None:
+                return
+            configure_models()
+            import mlx.core as mx
+            from mlx_lm import load
+
+            self.model, self.tokenizer = load(str(self.model_path))
+            mx.synchronize()
+
+    async def prepare(self):
+        await asyncio.get_running_loop().run_in_executor(self.executor, self.load_model)
+
+    async def assemble(self, history, user_text):
+        def assemble():
+            return PromptAssembler(
+                lambda text: len(self.tokenizer.encode(text, add_special_tokens=False))
+            ).assemble(history, user_text, memory_facts="")
+
+        return await asyncio.get_running_loop().run_in_executor(self.executor, assemble)
+
+    async def clear_history(self):
+        await asyncio.get_running_loop().run_in_executor(self.executor, self.caches.clear)
+
     def generate(self, messages, cache_name, cancelled, emit):
         with MLX_LOCK:
             configure_models()
             import mlx.core as mx
-            from mlx_lm import load, stream_generate
+            from mlx_lm import stream_generate
             from mlx_lm.generate import generation_stream
             from mlx_lm.models.cache import LRUPromptCache, make_prompt_cache
 
             if cancelled.is_set():
                 return
-            if self.model is None:
-                self.model, self.tokenizer = load(str(self.model_path))
+            self.load_model()
+            if not self.caches:
                 self.caches = {
                     name: LRUPromptCache(max_size=1) for name in ("conversation", "extraction")
                 }
@@ -113,6 +139,17 @@ class MLXLanguageModel:
 
 
 class StubLanguageModel:
+    async def prepare(self):
+        pass
+
+    async def assemble(self, history, user_text):
+        return PromptAssembler(lambda text: len(text.split())).assemble(
+            history, user_text, memory_facts=""
+        )
+
+    async def clear_history(self):
+        pass
+
     async def tokens(self, messages, cache_name="conversation"):
         for text in ("<state mood=neutral crisis=0>I heard you. ", "Tell me more."):
             await asyncio.sleep(0)

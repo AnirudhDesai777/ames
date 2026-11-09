@@ -132,3 +132,41 @@ async def test_errors_reach_caller_and_executor_can_be_closed(tmp_path, runtime)
 def test_model_directory_must_exist(tmp_path):
     with pytest.raises(ValueError, match="local model directory"):
         MLXLanguageModel(tmp_path / "missing")
+
+
+async def test_eager_prepare_and_prompt_counting_share_the_generation_thread(tmp_path, runtime):
+    threads = []
+    load = runtime.mlx.load.return_value
+
+    def load_model(path):
+        threads.append(get_ident())
+        return load
+
+    def encode(text, add_special_tokens):
+        assert add_special_tokens is False
+        threads.append(get_ident())
+        return text.split()
+
+    runtime.mlx.load.side_effect = load_model
+    runtime.tokenizer.encode.side_effect = encode
+    model = MLXLanguageModel(tmp_path)
+    try:
+        await model.prepare()
+        await model.prepare()
+        assert model.model is load[0]
+        runtime.mlx.load.assert_called_once_with(str(tmp_path))
+        runtime.mlx.stream_generate.assert_not_called()
+        messages = await model.assemble([{"role": "assistant", "content": "Spoken."}], "hello")
+        assert messages[1:] == [
+            {"role": "assistant", "content": "Spoken."},
+            {"role": "user", "content": "hello"},
+        ]
+        assert [text async for text in model.tokens(messages)] == ["hello", "."]
+        assert set(threads) == set(runtime.threads)
+        assert get_ident() not in threads
+        await model.clear_history()
+        assert model.caches == {}
+        assert [text async for text in model.tokens(messages)] == ["hello", "."]
+        assert runtime.cache.make_prompt_cache.call_count == 2
+    finally:
+        await model.close()

@@ -1,0 +1,174 @@
+import asyncio
+import wave
+from pathlib import Path
+from unittest.mock import Mock
+
+from pipecat.frames.frames import (
+    InputAudioRawFrame,
+    InterruptionFrame,
+    LLMFullResponseEndFrame,
+    TranscriptionFrame,
+    TTSAudioRawFrame,
+    TTSTextFrame,
+)
+from pipecat.pipeline.pipeline import Pipeline
+from pipecat.tests.utils import SleepFrame, run_test
+
+from server.cascade import StubTranscription, ToneTTS
+from server.latency import DiscardAudioOutput
+from server.live import Conversation, SessionOutput, SessionPrompt, live_stages
+from server.llm import StubLanguageModel
+
+
+async def test_wav_to_spoken_audio_and_next_prompt(monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
+    prompts = []
+
+    class Model(StubLanguageModel):
+        async def tokens(self, messages):
+            prompts.append(messages)
+            mood = "amused" if len(prompts) == 1 else "neutral"
+            for text in (f"<state mood={mood} crisis=0>Hello. ", "<sigh>How are you?"):
+                yield text
+
+    with wave.open(str(Path(__file__).parent / "fixtures/tone.wav"), "rb") as wav:
+        audio = wav.readframes(wav.getnframes())
+    events = Mock()
+    conversation = Conversation(events)
+    received, upstream = await run_test(
+        Pipeline(
+            live_stages(StubTranscription(), Model(), ToneTTS(), conversation, DiscardAudioOutput())
+        ),
+        frames_to_send=[
+            InputAudioRawFrame(audio, 16000, 1),
+            SleepFrame(0.35),
+            InputAudioRawFrame(audio, 16000, 1),
+            SleepFrame(0.35),
+        ],
+    )
+    assert any(
+        isinstance(frame, TTSAudioRawFrame) and frame.audio.strip(b"\x00") for frame in received
+    )
+    assert prompts[0][0]["role"] == "system"
+    assert prompts[0][-1] == {"role": "user", "content": "hi there"}
+    assert prompts[1][1:] == [
+        {"role": "user", "content": "hi there"},
+        {"role": "assistant", "content": "Hello. How are you?"},
+        {"role": "user", "content": "hi there"},
+    ]
+    assert (
+        conversation.history
+        == [
+            {"role": "user", "content": "hi there"},
+            {"role": "ames", "content": "Hello. How are you?"},
+        ]
+        * 2
+    )
+    finals = [call.args for call in events.transcript.call_args_list if call.args[2]]
+    assert finals == [
+        ("user", "hi there", True, 1),
+        ("ames", "Hello. How are you?", True, 1),
+        ("user", "hi there", True, 2),
+        ("ames", "Hello. How are you?", True, 2),
+    ]
+    events.state.assert_any_call("amused", 1)
+    events.state.assert_any_call("neutral", 2)
+    events.speaking.assert_any_call("ames")
+
+
+async def test_crisis_reply_never_reaches_tts_or_history(monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
+
+    class CrisisModel(StubLanguageModel):
+        async def tokens(self, messages):
+            yield "<state mood=concerned cri"
+            yield "sis=1>Do not speak this."
+            yield " Or this."
+
+    conversation = Conversation(Mock())
+    received, upstream = await run_test(
+        Pipeline(
+            live_stages(
+                StubTranscription(), CrisisModel(), ToneTTS(), conversation, DiscardAudioOutput()
+            )
+        ),
+        frames_to_send=[InputAudioRawFrame(b"\x00\x40" * 320, 16000, 1)],
+    )
+    assert not any(isinstance(frame, (TTSAudioRawFrame, TTSTextFrame)) for frame in received)
+    assert conversation.history == [{"role": "user", "content": "hi there"}]
+
+
+async def test_interruption_finalizes_only_completed_sentence_once():
+    events = Mock()
+    conversation = Conversation(events)
+    conversation.turn_id = 1
+    conversation.final = False
+    conversation.history.append({"role": "user", "content": "hello"})
+    await run_test(
+        SessionOutput(conversation),
+        frames_to_send=[
+            TTSTextFrame("Finished sentence.", "sentence"),
+            SleepFrame(0.05),
+            InterruptionFrame(),
+            SleepFrame(0.05),
+            LLMFullResponseEndFrame(),
+        ],
+    )
+    assert conversation.history[-1] == {"role": "ames", "content": "Finished sentence."}
+    assert [call.args for call in events.transcript.call_args_list] == [
+        ("ames", "Finished sentence.", False, 1),
+        ("ames", "Finished sentence.", True, 1),
+    ]
+
+
+async def test_sessions_do_not_share_history_and_blank_transcripts_do_not_start_turns():
+    first = Conversation(Mock())
+    first.history.append({"role": "user", "content": "private"})
+    second = Conversation(Mock())
+    await run_test(
+        SessionPrompt(second, StubLanguageModel()),
+        frames_to_send=[
+            TranscriptionFrame(" ", "", "now"),
+        ],
+    )
+    assert second.history == []
+    assert second.turn_id == 0
+
+
+async def test_pipeline_error_ends_live_session_without_hanging(monkeypatch):
+    from pipecat.frames.frames import StartFrame
+    from pipecat.processors.frame_processor import FrameProcessor
+
+    from server import live
+
+    class BrokenSTT(StubTranscription):
+        async def process_frame(self, frame, direction):
+            await super().process_frame(frame, direction)
+            if isinstance(frame, StartFrame):
+                await self.push_error("local_transcription_failed")
+
+    class Input(FrameProcessor):
+        async def process_frame(self, frame, direction):
+            await super().process_frame(frame, direction)
+            await self.push_frame(frame, direction)
+
+    transport = Mock()
+    transport.input.return_value = Input()
+    transport.output.return_value = DiscardAudioOutput()
+    monkeypatch.setenv("AMES_STUB", "1")
+    monkeypatch.setattr(live, "SmallWebRTCTransport", Mock(return_value=transport))
+    events = Mock()
+    await asyncio.wait_for(
+        live.run_live(
+            Mock(),
+            BrokenSTT(),
+            StubLanguageModel(),
+            ToneTTS(),
+            Conversation(events),
+        ),
+        5,
+    )
+    events.notice.assert_called_once_with(
+        "session_ended",
+        "The voice pipeline stopped. Start a new session.",
+    )

@@ -184,8 +184,8 @@ async def test_failed_session_close_disconnects_replacement(client, monkeypatch,
         return connection
 
     monkeypatch.setattr(app_module, "echo_connection", connection_factory)
-    run_echo = AsyncMock()
-    monkeypatch.setattr(app_module, "run_echo", run_echo)
+    run_live = AsyncMock()
+    monkeypatch.setattr(app_module, "run_live", run_live)
     offer = {"type": "offer", "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"}
     first = await client.post("/api/offer", headers=headers(client), json=offer)
     assert first.status == 200
@@ -197,7 +197,7 @@ async def test_failed_session_close_disconnects_replacement(client, monkeypatch,
     connections[1].initialize.assert_awaited_once()
     connections[1].disconnect.assert_awaited_once()
     assert connections[1].pc.connectionState == "closed"
-    assert run_echo.await_count == 1
+    assert run_live.await_count == 1
 
 
 def test_rtvi_emitters():
@@ -259,11 +259,10 @@ async def test_real_offer_rtvi_and_session_replaced(client, monkeypatch):
 
     try:
         first = await connect()
-        received = [await asyncio.wait_for(messages.get(), 10) for count in range(3)]
+        received = [await asyncio.wait_for(messages.get(), 10) for count in range(2)]
         assert {message["data"]["type"] for message in received} == {
             "state",
             "speaking",
-            "transcript",
         }
         assert all(
             message["label"] == "rtvi-ai" and message["type"] == "server-message"
@@ -326,3 +325,87 @@ def test_failed_bind_preserves_token_without_opening_browser(tmp_path, monkeypat
     bind.assert_awaited_once()
     assert (tmp_path / "token").read_text() == "live token"
     app_module.webbrowser.get.assert_not_called()
+
+
+async def test_startup_prepares_llm_before_health_and_closes_resources(tmp_path, monkeypatch):
+    stt, model = app_module.model_services()
+    tts = app_module.tts_service()
+    model.model = None
+    model.model_path = tmp_path / "local-llm"
+
+    async def prepare():
+        model.model = object()
+
+    model.prepare = AsyncMock(side_effect=prepare)
+    model.close = AsyncMock()
+    stt.cleanup = AsyncMock()
+    tts.cleanup = AsyncMock()
+    monkeypatch.setattr(app_module, "model_services", lambda: (stt, model))
+    monkeypatch.setattr(app_module, "tts_service", lambda: tts)
+    token = "local-token"
+    async with TestClient(TestServer(create_app(token, tmp_path))) as client:
+        model.prepare.assert_awaited_once()
+        response = await client.get(
+            "/api/health",
+            headers={
+                "Host": "127.0.0.1:8765",
+                "X-Ames-Token": token,
+            },
+        )
+        body = await response.json()
+        assert body["models"][1] == {
+            "role": "llm",
+            "id": str(model.model_path),
+            "loaded": True,
+        }
+        model.model = None
+        response = await client.get(
+            "/api/health",
+            headers={
+                "Host": "127.0.0.1:8765",
+                "X-Ames-Token": token,
+            },
+        )
+        assert (await response.json())["models"][1]["loaded"] is False
+    model.close.assert_awaited_once()
+    stt.cleanup.assert_awaited_once()
+    tts.cleanup.assert_awaited_once()
+
+
+async def test_failed_eager_load_cleans_up_without_accepting_offers(tmp_path, monkeypatch):
+    stt, model = app_module.model_services()
+    tts = app_module.tts_service()
+    model.prepare = AsyncMock(side_effect=RuntimeError("load failed"))
+    model.close = AsyncMock()
+    stt.cleanup = AsyncMock()
+    tts.cleanup = AsyncMock()
+    monkeypatch.setattr(app_module, "model_services", lambda: (stt, model))
+    monkeypatch.setattr(app_module, "tts_service", lambda: tts)
+    app = create_app("token", tmp_path)
+    with pytest.raises(RuntimeError, match="load failed"):
+        await app.cleanup_ctx[0](app).__anext__()
+    model.close.assert_awaited_once()
+    stt.cleanup.assert_awaited_once()
+    tts.cleanup.assert_awaited_once()
+
+
+async def test_session_failure_ends_with_private_notice_and_discards_history(monkeypatch):
+    stt, model = app_module.model_services()
+    tts = app_module.tts_service()
+    model.clear_history = AsyncMock()
+    connection = Mock()
+    connection.disconnect = AsyncMock()
+    session = app_module.Session(connection, stt, model, tts)
+    session.conversation.history.append({"role": "user", "content": "private"})
+    session.conversation.reply = "private reply"
+    monkeypatch.setattr(app_module, "run_live", AsyncMock(side_effect=RuntimeError("private")))
+    await session.run()
+    assert session.conversation.history == []
+    assert session.conversation.reply == ""
+    model.clear_history.assert_awaited_once()
+    connection.disconnect.assert_awaited_once()
+    assert connection.send_app_message.call_args.args[0]["data"] == {
+        "type": "notice",
+        "code": "session_ended",
+        "text": "The voice pipeline stopped. Start a new session.",
+    }

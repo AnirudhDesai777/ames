@@ -133,3 +133,14 @@ async def test_startup_loads_once_and_vad_segments_receive_raw_pcm(tmp_path, run
 def test_model_directory_must_exist(tmp_path):
     with pytest.raises(ValueError, match="existing local model directory"):
         ParakeetSTTService(tmp_path / "missing")
+
+
+async def test_new_session_reuses_loaded_model_with_fresh_processor(service, runtime):
+    session = service.new_session()
+    try:
+        assert session is not service and session.executor is not service.executor
+        assert session.model is service.model and session.mx is service.mx
+        assert [frame.text async for frame in session.run_stt(b"\x00\x40" * 320)] == ["hello there"]
+        runtime.loader.assert_called_once()
+    finally:
+        await session.cleanup()

@@ -120,9 +120,10 @@ class LocalLLMService(LLMService):
 
 
 class ReplySanitizer(FrameProcessor):
-    def __init__(self, tts):
+    def __init__(self, tts, on_state=None):
         super().__init__()
         self.tts = tts
+        self.on_state = on_state
         self.state = ParserState()
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
@@ -139,11 +140,15 @@ class ReplySanitizer(FrameProcessor):
                 frame.text if isinstance(frame, LLMTextFrame) else "",
                 final=isinstance(frame, LLMFullResponseEndFrame),
             )
+            control_done = self.state.control_done
             self.state = result.state
+            if self.on_state and not control_done and result.state.control_done:
+                self.on_state(result.state.mood)
             self.tts.mood = result.state.mood
             if result.error_code:
                 logger.error(result.error_code)
-            if result.tts_text:
+            # shortcut: crisis replies stay silent until S6 adds the full crisis exit.
+            if result.tts_text and not result.state.crisis:
                 await self.push_frame(LLMTextFrame(result.tts_text))
             if isinstance(frame, LLMTextFrame):
                 return
@@ -247,7 +252,7 @@ def tts_service():
     return QwenTTSService(path)
 
 
-def cascade_stages(stt, model, tts=None, prompt=None):
+def cascade_stages(stt, model, tts=None, prompt=None, on_state=None):
     tts = tts if tts is not None else tts_service()
     prompt = prompt if prompt is not None else PlainPrompt()
     input_stages = []
@@ -260,7 +265,7 @@ def cascade_stages(stt, model, tts=None, prompt=None):
         stt,
         prompt,
         LocalLLMService(model),
-        ReplySanitizer(tts),
+        ReplySanitizer(tts, on_state=on_state),
         SentenceSplitter(),
         tts,
     ]

@@ -122,6 +122,7 @@ export function mountConversation(
     running = true;
     notice.hidden = true;
     notice.textContent = "";
+    delete notice.dataset.code;
     transcript.replaceChildren();
     turns.clear();
     empty.hidden = false;
@@ -137,7 +138,9 @@ export function mountConversation(
       }, () => {
         if (current !== attempt || !running) return;
         finish("Disconnected", "Reconnect");
-        showNotice("Connection lost. Your memory is kept. Reconnect to start a new session.", "connection_lost");
+        if (notice.dataset.code !== "server_error") {
+          showNotice("Connection lost. Reconnect to start a new session.", "connection_lost");
+        }
       });
       session = next;
       await next.ready;

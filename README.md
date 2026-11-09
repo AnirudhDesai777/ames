@@ -2,12 +2,11 @@
 
 A local-only voice companion that runs in your browser. Every model runs on your own machine.
 
-Status: S1b foundation. The repository has a model-free Pipecat SmallWebRTC audio
-echo, an authenticated loopback HTTP app, and a browser connection flow.
-The recorded cascade also runs local Parakeet, mlx-lm, and Qwen TTS; live
-conversation wiring is a later slice.
+Status: live pipeline wired. The authenticated loopback app connects browser
+audio to local Parakeet, the persona prompt, mlx-lm, and Qwen TTS over WebRTC.
+History stays in server memory for the current session; v1 has no durable memory.
 
-The planned real-voice minimum is Apple Silicon with 24 GB RAM and a TTS startup
+The real-voice minimum is Apple Silicon with 24 GB RAM and a TTS startup
 real-time factor at most 0.9 (reference: M4 Pro, 24 GB). No fallback voice.
 
 Use Python 3.12 with uv and Node 22.18 or newer within Node 22:
@@ -27,9 +26,11 @@ npm run build
 After building, run `AMES_STUB=1 uv run --locked python -m server.app` from the
 repository root. It opens Chrome with a private token in the URL fragment.
 Acknowledge the first-run advisory, then choose Start conversation to request
-the microphone and play its input back. Use headphones. The client displays the
-server transcript and session notices, with local mute and end controls.
+the microphone and hear the stub reply as tone audio. The client displays the
+server transcript and session notices, with local mute and end controls. For
+real speech, install the local models and set `AMES_LLM_MODEL` as described in
+[server/README.md](server/README.md), then run with `AMES_STUB=0`.
 
 See [server/README.md](server/README.md) and [web/README.md](web/README.md) for
-the foundation interfaces. CI runs these checks on Ubuntu with `AMES_STUB=1`
+the local interfaces. CI runs these checks on Ubuntu with `AMES_STUB=1`
 without models or hardware. The v1 plan remains in [docs/design.md](docs/design.md).

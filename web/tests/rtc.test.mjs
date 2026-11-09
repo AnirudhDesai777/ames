@@ -233,3 +233,17 @@ test("ending while permission is pending stops the late microphone without an of
   assert.equal(setup.fetch.mock.callCount(), 0);
   assert.equal(setup.track.stop.mock.callCount(), 1);
 });
+
+test("a temporary disconnected state can recover without closing the session", async (t) => {
+  const setup = browser(t);
+  const lost = t.mock.fn();
+  const session = startSession("token", setup.audio, () => {}, lost);
+  await session.ready;
+  for (const state of ["disconnected", "connected"]) {
+    setup.peer.connectionState = state;
+    setup.peer.dispatchEvent(new Event("connectionstatechange"));
+  }
+  assert.equal(lost.mock.callCount(), 0);
+  assert.equal(setup.track.stop.mock.callCount(), 0);
+  session.close();
+});
