@@ -1,4 +1,4 @@
-"""Loopback-only HTTP signaling for the model-free echo."""
+"""Loopback-only HTTP signaling for the local voice pipeline."""
 
 import asyncio
 import os
@@ -14,8 +14,10 @@ from aiohttp import web
 from aiortc.sdp import SessionDescription
 from loguru import logger
 
-from server.echo import echo_connection, run_echo
+from server.cascade import StubTranscription, ToneTTS, model_services, tts_service
+from server.echo import echo_connection
 from server.events import Events
+from server.live import Conversation, run_live
 
 HOSTS = {"127.0.0.1:8765", "localhost:8765"}
 DATA_DIR = Path.home() / "Library/Application Support/Ames"
@@ -37,17 +39,31 @@ def write_token(data_dir: Path, token: str):
 
 
 class Session:
-    def __init__(self, connection):
+    def __init__(self, connection, stt, model, tts):
         self.connection = connection
         self.session_id = uuid4().hex
         self.events = Events(connection)
         self.task = None
+        self.stt = stt
+        self.model = model
+        self.tts = tts
+        self.conversation = Conversation(self.events)
 
     async def run(self):
         try:
-            await run_echo(self.connection)
+            stt = (
+                self.stt.new_session() if hasattr(self.stt, "new_session") else StubTranscription()
+            )
+            tts = self.tts.new_session() if hasattr(self.tts, "new_session") else ToneTTS()
+            await run_live(self.connection, stt, self.model, tts, self.conversation)
         except Exception:
-            logger.error("echo_failed")
+            logger.error("pipeline_failed")
+            self.events.notice("session_ended", "The voice pipeline stopped. Start a new session.")
+        finally:
+            self.conversation.history.clear()
+            self.conversation.reply = ""
+            await self.model.clear_history()
+            await self.connection.disconnect()
 
     async def close(self, code: str, text: str):
         if self.connection.pc.connectionState != "closed":
@@ -57,10 +73,13 @@ class Session:
             self.task.cancel()
             with suppress(asyncio.CancelledError):
                 await self.task
+            # Closing can cancel natural teardown while it awaits the executor.
+            await self.model.clear_history()
 
 
 def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
     active = None
+    stt = model = tts = None
     lock = asyncio.Lock()
 
     @web.middleware
@@ -85,12 +104,26 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
         return await handler(request)
 
     async def lifecycle(app):
-        if os.environ.get("AMES_STUB") != "1":
-            raise RuntimeError("S1b supports only the echo stubs. Set AMES_STUB=1.")
-        yield
-        async with lock:
-            if active:
-                await active.close("session_ended", "The server stopped.")
+        nonlocal stt, model, tts
+        try:
+            stt, model = model_services()
+            tts = tts_service()
+            await model.prepare()
+            if hasattr(stt, "load_model"):
+                await asyncio.get_running_loop().run_in_executor(stt.executor, stt.load_model)
+            if hasattr(tts, "prepare"):
+                await tts.prepare()
+            yield
+        finally:
+            async with lock:
+                if active:
+                    await active.close("session_ended", "The server stopped.")
+            if stt:
+                await stt.cleanup()
+            if tts:
+                await tts.cleanup()
+            if model:
+                await model.close()
 
     async def index(request):
         if not (web_root / "index.html").is_file():
@@ -98,13 +131,16 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
         return web.FileResponse(web_root / "index.html", headers={"Cache-Control": "no-store"})
 
     async def health(request):
-        return web.json_response(
+        models = [
             {
-                "ready": True,
-                "models": [
-                    {"role": role, "id": "stub", "loaded": True} for role in ("stt", "llm", "tts")
-                ],
+                "role": role,
+                "id": str(getattr(service, "model_path", "stub")),
+                "loaded": getattr(service, "model", True) is not None,
             }
+            for role, service in (("stt", stt), ("llm", model), ("tts", tts))
+        ]
+        return web.json_response(
+            {"ready": all(item["loaded"] for item in models), "models": models}
         )
 
     async def offer(request):
@@ -127,7 +163,7 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
         except (ValueError, AssertionError, IndexError, KeyError):
             raise web.HTTPBadRequest(text="Invalid SDP offer") from None
         async with lock:
-            session = Session(echo_connection())
+            session = Session(echo_connection(), stt, model, tts)
             try:
                 await session.connection.initialize(body["sdp"], body["type"])
             except Exception:
@@ -142,7 +178,6 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
             active = session
             session.events.state("neutral", 0)
             session.events.speaking("none")
-            session.events.transcript("ames", "Audio echo ready (stub).", True, 0)
             session.task = asyncio.create_task(session.run())
             return web.json_response(
                 {**session.connection.get_answer(), "session_id": session.session_id}

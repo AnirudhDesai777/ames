@@ -270,3 +270,15 @@ test("playback exposes native controls when autoplay needs a user gesture", () =
   assert.equal(ui.element("audio").hasAttribute("controls"), true);
   assert.match(ui.document.querySelector(".playback").textContent, /press play/);
 });
+
+test("connection loss keeps a preceding server error visible and makes no memory promise", async () => {
+  const ui = await connected();
+  ui.receive({ type: "notice", code: "server_error", text: "The voice pipeline stopped." });
+  ui.sessions[0].disconnected();
+  assert.equal(ui.element("notice").textContent, "The voice pipeline stopped.");
+  ui.click("connect");
+  await tick();
+  ui.sessions[1].disconnected();
+  assert.equal(ui.element("notice").hidden, false);
+  assert.equal(ui.element("notice").textContent, "Connection lost. Reconnect to start a new session.");
+});

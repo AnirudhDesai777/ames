@@ -54,6 +54,13 @@ class QwenTTSService(TTSService):
         self.ready = False
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ames-tts")
 
+    def new_session(self):
+        service = QwenTTSService(self.model_path)
+        service.model = self.model
+        service.mx = self.mx
+        service.ready = self.ready
+        return service
+
     def load_model(self):
         with MLX_LOCK:
             if self.model is not None:

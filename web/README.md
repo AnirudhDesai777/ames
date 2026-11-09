@@ -23,8 +23,8 @@ shows it again. If storage is unavailable, acknowledgement lasts for that visit.
 Start conversation asks for the microphone, gathers local ICE candidates, then
 sends an offer with `X-Ames-Token` in a header. The token is never sent in a query
 string or offer body. `peerConfiguration()` supplies an empty `iceServers` list.
-Use headphones with the stub audio echo. Audio playback contains native controls
-if Chrome blocks autoplay.
+Stub mode replies with tone audio through the live pipeline. Audio playback
+contains native controls if Chrome blocks autoplay.
 
 The orb reflects `speaking` and all six `state.mood` values, with text labels and
 reduced-motion support. The live transcript updates each role and turn in place
@@ -37,7 +37,9 @@ connection setup is still pending. Neither control sends an HTTP request.
 `session_replaced` and `session_ended` close the session and keep the server's
 notice on screen until the user starts another conversation. `server_error`
 shows the server's text while leaving the session open. Microphone denial shows
-Chrome permission instructions; a lost connection offers Reconnect. Late events
+Chrome permission instructions; a lost connection offers Reconnect without
+promising memory retention. Temporary WebRTC disconnections can recover, and a
+server error notice survives later connection loss. Late events
 from a closed session cannot replace a terminal notice or update a new session.
 
 `server/events.py` defines the RTVI event payloads. `rtc.ts` validates and routes

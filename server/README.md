@@ -26,26 +26,41 @@ public and contain no token; all API requests need `X-Ames-Token`. Every route
 rejects other Hosts and foreign Origins, and sends no CORS headers. Requests
 without an Origin are allowed for local clients with the token.
 
-`GET /api/health` reports the three loaded stubs. `POST /api/offer` accepts
-`{ "type": "offer", "sdp": "..." }` and returns an SDP answer, `pc_id`, and a
-random `session_id`. A valid new offer closes the previous session after sending
-`notice: session_replaced`. Invalid offers leave the active session alone.
+`GET /api/health` reports each local model ID and its loaded flag. Startup loads
+Parakeet, eagerly loads the LLM selected by `AMES_LLM_MODEL`, and prepares Qwen
+with its speed gate before accepting connections. Stub mode reports three
+loaded stubs. `POST /api/offer` accepts `{ "type": "offer", "sdp": "..." }` and
+returns an SDP answer, `pc_id`, and a random `session_id`. A valid new offer
+closes the previous session after sending `notice: session_replaced`. Invalid
+offers leave the active session alone.
+
+`server.live` connects WebRTC input to Parakeet, the capped persona prompt,
+mlx-lm, control-token sanitation, sentence splitting, Qwen, and WebRTC output.
+Models stay loaded across connections; STT and TTS get fresh session processors
+and executors. Prompt assembly and token counting run on the LLM executor,
+which also owns generation and tokenizer access.
+
+History contains user transcripts and only Ames sentences whose audio finished
+transport playback. A cut sentence and queued sentences are dropped. History
+and LLM prompt caches are cleared when the session ends. Conversation text is
+never written to disk, no memory repository is opened, and the late block is
+empty. The prompt maps the UI's `ames` role to `assistant` and retains at most
+3000 history content tokens. Retrieval and extraction remain v1.1 work.
 
 `server.events.Events` wraps transcript, speaking, state, and notice payloads
-from design 5.4 in Pipecat RTVI `server-message` envelopes. Each connection gets
-a neutral state, no speaker, and a placeholder transcript. These values do not
-describe the echoed audio. Session replacement and shutdown emit real notices.
+from design 5.4 in Pipecat RTVI `server-message` envelopes. Initial neutral state
+and no-speaker events queue until the data channel opens. User transcripts are
+final once; Ames transcripts grow as sentences complete, then become final
+once at reply completion or interruption. A pipeline error ends the session
+with a notice that remains visible after disconnect. A temporary WebRTC
+`disconnected` state permits recovery.
 
-`server.echo.echo_connection()` creates a SmallWebRTC connection with no ICE
-servers. After an offer initializes it, `await server.echo.run_echo(connection)`
-runs audio input through the stub stages and back to audio output. It cancels on
-disconnect and closes the connection when the pipeline ends.
+Until S6 (#34) supplies the full crisis exit, replies with `crisis=1` produce
+no TTS text or audio.
 
-S1 deliberately preserves PCM through the STT and LLM stubs. The TTS stub wraps
-it as output audio, so the test can check the echo byte for byte. These stages do
-not transcribe, generate text, or synthesize speech. The S2a recorded-turn cascade
-below provides transcription and text generation separately from this echo.
-Without `AMES_STUB=1`, construction fails with a setup message.
+The original `server.echo` harness remains available for transport regression
+tests. `AMES_STUB=1` in the HTTP app instead uses fixed transcription, a stub
+reply, and synthesized tone audio through the live pipeline.
 
 The committed fixture is a generated 200 ms, 440 Hz, mono PCM16 tone at 16 kHz.
 Tests need no models, GPU, microphone, browser, or network connection.
@@ -63,8 +78,8 @@ Pipecat sentence aggregation, and Qwen3-TTS 1.7B CustomVoice 8bit speech.
 `AMES_STUB=1` selects model-free transcription, generation, and tone TTS.
 Parakeet loads once at pipeline startup and transcribes VAD segments. Empty
 transcripts produce no frame. Each recorded replay starts with empty history.
-The HTTP app still runs the S1 echo; persona, memory, and live conversation
-wiring belong to W.
+The HTTP app uses the live persona prompt and session history described above.
+The recorded harness keeps its plain prompt for latency comparisons.
 
 From the repository root:
 
@@ -153,8 +168,8 @@ does. Each completed sentence flushes trailing transport audio before its text
 receipt. Only receipts that survive the playback queue enter history; a cut
 sentence and queued sentences do not. Transport writes are the server's playback
 boundary; browser playout and echo cancellation still need the manual check.
-The recorded harness uses a plain prompt. W will supply the capped persona
-prompt and connect these stages to the HTTP session.
+The live pipeline uses `SessionOutput` at the same boundary and finalizes a
+turn only after playback or interruption. The recorded harness keeps its plain prompt.
 
 Run the model-free acceptance checks:
 
@@ -162,7 +177,7 @@ Run the model-free acceptance checks:
 AMES_STUB=1 uv run --locked pytest -q server/tests/test_tts.py server/tests/test_cascade.py server/tests/test_mlx_runtime.py
 ```
 
-Manual checks on the reference Mac, after W connects live conversations:
+Manual checks on the reference Mac:
 
 - Use Chrome with echo cancellation enabled and speakers playing Ames's speech.
   Her own voice must not interrupt her.
@@ -196,8 +211,8 @@ persona, memory facts, newest user turn, and chat-template overhead.
 Changing memory facts affects only the final user message. The persona and retained
 history stay byte-identical until old history drops off the front. The builder
 copies messages and stores no history; the caller owns session boundaries and
-supplies only completed spoken text. Retrieval and live pipeline wiring belong
-to S5c and W. The eval runner shares the persona loader.
+supplies only completed spoken text. Live sessions supply an empty late block;
+retrieval belongs to S5c in v1.1. The eval runner shares the persona loader.
 
 Run the prefix-stability and history-cap checks without models:
 
@@ -248,8 +263,8 @@ when no session is active. It removes only marked turns outside that session,
 including turns marked before a restart, and leaves pending turns for extraction.
 Retention does not advance the user-delete epoch.
 
-S5a adds storage only. Live turn recording, extraction, retrieval, and the
-memory API and panel remain in their later slices. Run the repository,
+S5a adds storage only. Durable turn recording, extraction, retrieval, and the
+memory API and panel remain in v1.1. Run the repository,
 cascade-delete and retention checks without models or network access:
 
 ```sh

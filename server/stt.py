@@ -32,6 +32,12 @@ class ParakeetSTTService(SegmentedSTTService):
     def wants_wav_segments(self):
         return False
 
+    def new_session(self):
+        service = ParakeetSTTService(self.model_path)
+        service.model = self.model
+        service.mx = self.mx
+        return service
+
     def load_model(self):
         with MLX_LOCK:
             if self.model is not None:
