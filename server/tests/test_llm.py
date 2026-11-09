@@ -65,6 +65,9 @@ async def test_separate_caches_reuse_prefix_and_disable_thinking(tmp_path, runti
             [1, 2, 3],
             [3],
         ]
+        assert all(
+            call.kwargs["max_tokens"] == 256 for call in runtime.mlx.stream_generate.call_args_list
+        )
         runtime.tokenizer.apply_chat_template.assert_called_with(
             messages, tokenize=True, add_generation_prompt=True, enable_thinking=False
         )

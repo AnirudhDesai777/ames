@@ -322,17 +322,68 @@ def test_empty_set_does_not_pass(name):
 
 
 @pytest.mark.parametrize("answer", ["maybe", "", "yes, here are examples"])
-def test_invalid_judge_output_is_an_error(answer):
+def test_invalid_judge_output_is_recorded_per_case(answer):
     row = {"id": "g1", "split": "dev", "rule": "G4", "turns": []}
-    with pytest.raises(ValueError, match="yes or no"):
-        evaluate("guardrail", [row], judge=lambda messages: answer)
+    result = evaluate("guardrail", [row, row | {"id": "g2"}], judge=lambda messages: answer)
+    assert len(result["cases"]) == 2
+    assert result["metrics"]["G4"] == 0
+    assert all(case["judge_errors"][0]["reply"] == answer for case in result["cases"])
 
 
-@pytest.mark.parametrize("answer", ["not json", "{}", '[{"subject":"user"}]'])
-def test_invalid_extraction_is_an_error(answer):
-    row = {"id": "m1", "split": "dev", "sessions": [[]], "gold_facts": [], "questions": []}
-    with pytest.raises(ValueError):
-        evaluate("memory", [row], extractor=lambda messages: answer)
+@pytest.mark.parametrize("tag", ["", "json"])
+def test_memory_normalises_fenced_extractor_reply(tag):
+    fact = {"subject": "user", "predicate": "likes", "object": "tea"}
+    row = {
+        "id": "m1",
+        "split": "dev",
+        "sessions": [[]],
+        "gold_facts": [fact],
+        "questions": [],
+    }
+    result = evaluate(
+        "memory", [row], extractor=lambda messages: f"```{tag}\n{json.dumps([fact])}\n```"
+    )
+    case = result["cases"][0]
+    assert case["extracted"] == case["correct_facts"] == 1
+    assert case["extraction_errors"] == []
+
+
+@pytest.mark.parametrize(
+    "answer", ["not json", "```json\nnot json\n```", "{}", '[{"subject":"user"}]']
+)
+def test_invalid_extraction_fails_only_its_case(answer):
+    fact = {"subject": "user", "predicate": "likes", "object": "tea"}
+    row = {
+        "id": "m1",
+        "split": "dev",
+        "sessions": [[], [], []],
+        "gold_facts": [fact],
+        "questions": [{"q": "What do I like?", "answer": "Tea"}],
+    }
+    replies = iter([json.dumps([fact]), answer, json.dumps([fact])])
+    seen = []
+
+    def model(messages):
+        seen.append(messages[1]["content"])
+        return "<state mood=neutral crisis=0>Tea."
+
+    result = evaluate(
+        "memory",
+        [row, row | {"id": "m2", "sessions": [[]]}],
+        model=model,
+        judge=lambda messages: "yes",
+        extractor=lambda messages: next(replies),
+    )
+    failed, following = result["cases"]
+    assert failed["extracted"] == failed["correct_facts"] == 0
+    assert failed["extraction_errors"][0]["session"] == 1
+    assert failed["extraction_errors"][0]["reply"] == answer
+    assert failed["extraction_errors"][0]["error"]
+    assert seen[0] == "Remembered facts: []"
+    assert following["extracted"] == following["correct_facts"] == 1
+    assert following["extraction_errors"] == []
+    assert result["metrics"]["recall"] == 0.5
+    assert result["status"] == "FAIL"
 
 
 def test_cli_reports_output_errors(tmp_path):
@@ -380,3 +431,43 @@ def test_cli_accepts_extraction_prompt_file(tmp_path):
         capture_output=True,
     )
     assert json.loads(output.read_text())["set"] == "memory"
+
+
+@pytest.mark.parametrize("reply", ["Yes.", "```json\nyes\n```", " NO! "])
+def test_judge_normalises_short_answers(reply):
+    assert run.judge_yes(lambda messages: reply, "Check", {}) == ("yes" in reply.casefold())
+
+
+def test_persona_fenced_scores_and_malformed_mood():
+    result = evaluate(
+        "persona",
+        [persona_row(category="thought")],
+        model=lambda messages: "Missing control token.",
+        judge=lambda messages: "```json\n" + json.dumps(dict.fromkeys(CRITERIA, 4)) + "\n```",
+    )
+    assert result["metrics"]["pass_rate"] == 1
+    assert result["metrics"]["mood_accuracy"] == 0
+    assert not result["cases"][0]["mood_correct"]
+
+
+@pytest.mark.parametrize("reply", ["not JSON", "{}", "[]", '{"in_character": 9}'])
+def test_bad_persona_judgment_does_not_abort(reply):
+    result = evaluate("persona", [persona_row()], judge=lambda messages: reply)
+    case = result["cases"][0]
+    assert not case["passed"]
+    assert case["scores"] is None
+    assert case["refusal"]
+    assert len(case["judge_errors"]) == 2
+
+
+def test_bad_memory_judgment_is_attached_to_case():
+    row = {
+        "id": "m1",
+        "split": "dev",
+        "sessions": [],
+        "gold_facts": [],
+        "questions": [{"q": "Name?", "answer": "Maya"}],
+    }
+    result = evaluate("memory", [row], judge=lambda messages: "unsure")
+    assert result["cases"][0]["judge_errors"][0]["reply"] == "unsure"
+    assert result["metrics"]["answer_accuracy"] == 0
