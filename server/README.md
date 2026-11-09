@@ -50,19 +50,20 @@ Without `AMES_STUB=1`, construction fails with a setup message.
 The committed fixture is a generated 200 ms, 440 Hz, mono PCM16 tone at 16 kHz.
 Tests need no models, GPU, microphone, browser, or network connection.
 
-The `mac` extra installs mlx-lm and Pipecat's Whisper extras only on macOS
+The `mac` extra installs mlx-audio, mlx-lm, and Pipecat's Whisper extras only on macOS
 arm64. It is not needed for the echo or stub harness. HTTP and WebRTC integration
 tests use only local sockets; they do not contact external services. The ICE regression test
 also checks the underlying aiortc configuration, where `None` would enable STUN.
 
 ## Recorded cascade and latency
 
-S2a adds `server.cascade`: Pipecat Whisper large-v3-turbo MLX transcription,
+`server.cascade` uses local Parakeet TDT 0.6B v2 MLX transcription,
 a plain single-user-turn prompt, an in-process mlx-lm service, Pipecat sentence
 aggregation, and tone-only stub TTS. The HTTP app still runs the S1 echo;
 live turn detection and the later conversation wiring are outside this harness.
 No persona, memory retrieval, extraction scheduling, or real speech synthesis
-runs here.
+runs here. Parakeet loads once at pipeline startup and transcribes VAD segments
+on one worker thread. Empty transcripts produce no frame.
 
 From the repository root:
 
@@ -89,8 +90,8 @@ For the manual run on the reference M4 Pro Mac with 24 GB RAM:
 
 1. Record the manifest WAVs at their listed paths, as nonempty 16 kHz mono PCM16.
 2. Run `uv sync --locked --extra mac`.
-3. Place the complete Whisper large-v3-turbo MLX model directory at
-   `~/Library/Application Support/Ames/models/whisper-large-v3-turbo/`.
+3. Place the complete Parakeet TDT 0.6B v2 MLX model directory at
+   `~/Library/Application Support/Ames/models/parakeet-tdt-0.6b-v2/`.
    Place a complete mlx-lm model directory under the same `models/` directory.
    Model selection and pinned downloads are later slices; this command never
    downloads weights.
