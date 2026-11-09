@@ -8,12 +8,13 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from evals import llm_bakeoff as bake
+from evals.stubs import stub_judge
 from server.llm import MAX_REPLY_TOKENS
 from server.prompt import HISTORY_TOKENS, load_system_prompt
 
 
 @pytest.mark.parametrize("candidate", bake.CANDIDATES)
-def test_stub_bakeoff_has_three_gates_runs_and_capped_probe(candidate, monkeypatch):
+def test_stub_bakeoff_has_pending_metrics_and_capped_probe(candidate, monkeypatch):
     original = builtins.__import__
 
     def no_models(name, *args, **kwargs):
@@ -21,8 +22,8 @@ def test_stub_bakeoff_has_three_gates_runs_and_capped_probe(candidate, monkeypat
         return original(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", no_models)
-    result = bake.bakeoff(candidate, stub=True)
-    assert result["status"] == "FAIL"
+    result, replies, requests = bake.bakeoff(candidate, stub=True)
+    assert result["status"] == "PENDING_VERDICTS"
     assert result["backend"] == "stub"
     assert result["revision"] == bake.CANDIDATES[candidate][1]
     assert result["system_prompt_sha256"] == bake.sha256(load_system_prompt())
@@ -33,6 +34,21 @@ def test_stub_bakeoff_has_three_gates_runs_and_capped_probe(candidate, monkeypat
     for quality in result["quality"].values():
         assert len(quality["runs"]) == 3
         assert all(run["split"] == "heldout" for run in quality["runs"])
+        assert "malformed" in quality["metrics"]
+        for run in quality["runs"]:
+            assert "correct_answers" not in run["counts"]
+            for case in run["cases"]:
+                assert (
+                    not {"scores", "passed", "refusal", "judge_errors", "correct_answers"}
+                    & case.keys()
+                )
+                assert all("passed" not in answer for answer in case.get("answers", []))
+    assert set(result["quality"]["persona"]["metrics"]) == {"mood_accuracy", "malformed"}
+    assert set(result["quality"]["guardrail"]["metrics"]) == {"malformed"}
+    assert set(result["quality"]["memory"]["metrics"]) == {"precision", "recall", "malformed"}
+    assert result["quality"]["crisis"]["gates"]
+    assert "judge" not in result
+    assert replies and requests
     performance = result["performance"]
     assert performance["peak_mlx_bytes"] is None
     assert performance["peak_rss_bytes"] is None
@@ -60,8 +76,96 @@ def test_cli_runs_in_ci_with_stubs(tmp_path):
         check=True,
         env=os.environ | {"AMES_STUB": "1"},
     )
-    assert "backend=stub FAIL" in completed.stdout
+    assert "backend=stub PENDING_VERDICTS" in completed.stdout
     assert json.loads(output.read_text())["backend"] == "stub"
+    requests = json.loads((output.parent / "bonsai2-2b.judge-requests.json").read_text())
+    assert json.loads((output.parent / "bonsai2-2b.replies.json").read_text())
+    verdicts = tmp_path / "verdicts.json"
+    verdicts.write_text(
+        json.dumps([{"key": row["key"], "answer": stub_judge(row["messages"])} for row in requests])
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "evals.llm_bakeoff",
+        "score",
+        "--candidate",
+        "bonsai2-2b",
+        "--out",
+        str(output),
+        "--verdicts",
+        str(verdicts),
+    ]
+    completed = subprocess.run(command, capture_output=True, text=True, check=True)
+    assert "backend=stub FAIL" in completed.stdout
+    scored = json.loads(output.read_text())
+    assert scored["quality"]["persona"]["metrics"]["pass_rate"] == 1
+    verdicts.write_text("[]")
+    completed = subprocess.run(command, capture_output=True, text=True)
+    assert completed.returncode == 2
+    assert requests[0]["key"] in completed.stderr
+    assert json.loads(output.read_text()) == scored
+
+
+def test_run_then_score_matches_direct_evaluate_with_repeated_calls(monkeypatch):
+    loaded = []
+
+    class ChangingModel(bake.StubModel):
+        def __init__(self, entry, sampling):
+            loaded.append(entry)
+            super().__init__(entry, sampling)
+            self.calls = 0
+
+        def __call__(self, messages):
+            self.calls += 1
+            reply = super().__call__(messages)
+            if messages[0]["content"].startswith("Extract"):
+                return reply.replace("tea", "coffee") if self.calls % 2 else reply
+            return reply + f" Call {self.calls}."
+
+    result, replies, requests = bake.bakeoff("qwen35-2b", stub=True, factory=ChangingModel)
+    assert loaded == [bake.CANDIDATES["qwen35-2b"]]
+    assert any(row["key"].endswith(":1") for row in replies)
+    verdicts = [{"key": row["key"], "answer": stub_judge(row["messages"])} for row in requests]
+    monkeypatch.setattr(bake, "LocalModel", lambda *args: pytest.fail("score loaded a model"))
+    scored = bake.score(result, replies, verdicts)
+    direct = ChangingModel(bake.CANDIDATES["qwen35-2b"], bake.SAMPLING)
+    for name in bake.run.SETS:
+        expected = bake.average_runs(
+            name,
+            [
+                bake.run.evaluate(
+                    name,
+                    bake.read_rows(name),
+                    split="heldout",
+                    model=direct.conversation,
+                    judge=stub_judge,
+                    extractor=direct,
+                    extraction_prompt=bake.extraction_instructions(),
+                )
+                for repeat in range(bake.REPEATS)
+            ],
+        )
+        assert scored["quality"][name] == expected
+    assert scored["status"] == "FAIL"
+    assert scored["performance"] == result["performance"]
+
+
+@pytest.mark.parametrize("missing", ["reply", "extraction", "verdict"])
+def test_score_missing_key_raises_with_key(missing):
+    result, replies, requests = bake.bakeoff("qwen35-2b", stub=True)
+    verdicts = [{"key": row["key"], "answer": stub_judge(row["messages"])} for row in requests]
+    if missing == "verdict":
+        key = verdicts.pop(0)["key"]
+    else:
+        index = next(
+            i
+            for i, row in enumerate(replies)
+            if row["messages"][0]["content"].startswith("Extract") == (missing == "extraction")
+        )
+        key = replies.pop(index)["key"]
+    with pytest.raises(KeyError, match=key):
+        bake.score(result, replies, verdicts)
 
 
 def test_conversation_uses_assembler_and_moves_memory_into_user_turn():
@@ -104,16 +208,16 @@ def test_candidate_errors_keep_provenance_and_do_not_prevent_other_candidates():
     def broken(entry, sampling):
         raise ValueError("chat template rejects system role")
 
-    result = bake.bakeoff("gemma4-e2b", stub=True, factory=broken)
+    result, replies, requests = bake.bakeoff("gemma4-e2b", stub=True, factory=broken)
     assert result["status"] == "ERROR"
     assert "chat template" in result["error"]["message"]
     assert result["model_id"] == bake.CANDIDATES["gemma4-e2b"][0]
     assert result["system_prompt_sha256"]
     assert result["judge_prompt_source_sha256"]
-    assert bake.bakeoff("qwen35-2b", stub=True)["status"] != "ERROR"
+    assert bake.bakeoff("qwen35-2b", stub=True)[0]["status"] != "ERROR"
 
 
-def fake_runtime(monkeypatch, *, trimmable=True):
+def fake_runtime(monkeypatch, *, trimmable=True, endoftext=False, generated=(7,)):
     calls = []
 
     def module(name, **attributes):
@@ -139,6 +243,15 @@ def fake_runtime(monkeypatch, *, trimmable=True):
     module("huggingface_hub", snapshot_download=snapshot)
 
     class Tokenizer:
+        def __init__(self):
+            self.eos_token_ids = {100265}
+
+        def get_vocab(self):
+            return {"<|endoftext|>": 100257} if endoftext else {}
+
+        def add_eos_token(self, token):
+            self.eos_token_ids.add(self.get_vocab()[token])
+
         def encode(self, text, **kwargs):
             return list(range(len(text.split())))
 
@@ -163,9 +276,16 @@ def fake_runtime(monkeypatch, *, trimmable=True):
 
     def stream(model, tokenizer, prompt, **kwargs):
         calls.append(("stream", prompt, kwargs))
-        yield SimpleNamespace(
-            text="Hello", token=7, prompt_tokens=len(prompt), prompt_tps=100, generation_tps=25
-        )
+        for token in generated:
+            if token in tokenizer.eos_token_ids:
+                return
+            yield SimpleNamespace(
+                text="Hello" if token == 7 else "run-on",
+                token=token,
+                prompt_tokens=len(prompt),
+                prompt_tps=100,
+                generation_tps=25,
+            )
 
     module("mlx_lm", load=load, stream_generate=stream)
     module("mlx_lm.models")
@@ -182,7 +302,20 @@ def fake_runtime(monkeypatch, *, trimmable=True):
 
     module("mlx_lm.models.cache", LRUPromptCache=Cache, make_prompt_cache=lambda model: [])
     module("mlx_lm.sample_utils", make_sampler=lambda **kwargs: kwargs)
+    module("mlx_lm.tokenizer_utils", TokenizerWrapper=Tokenizer)
     return calls, decoder, Tokenizer
+
+
+@pytest.mark.parametrize("candidate", ["qwen35-2b", "bonsai2-2b"])
+@pytest.mark.parametrize("stop", [100257, 100265])
+def test_endoftext_and_configured_eos_stop_generation(monkeypatch, candidate, stop):
+    calls, decoder, tokenizer = fake_runtime(monkeypatch, endoftext=True, generated=(7, stop, 8))
+    vlm = ModuleType("mlx_vlm")
+    vlm.load = lambda path: (SimpleNamespace(language_model=decoder), tokenizer())
+    monkeypatch.setitem(sys.modules, "mlx_vlm", vlm)
+    model = bake.LocalModel(bake.CANDIDATES[candidate], bake.SAMPLING)
+    assert model.tokenizer.eos_token_ids == {100257, 100265}
+    assert model.measure(model.assembler.assemble([], "Hi")) == "Hello"
 
 
 @pytest.mark.parametrize("trimmable", [True, False])
@@ -250,7 +383,7 @@ def test_template_exception_marks_candidate_error(monkeypatch):
         raise ValueError("template rejects roles")
 
     monkeypatch.setattr(tokenizer, "apply_chat_template", reject)
-    result = bake.bakeoff("qwen3-4b", stub=True, factory=bake.LocalModel)
+    result, replies, requests = bake.bakeoff("qwen3-4b", stub=True, factory=bake.LocalModel)
     assert result["status"] == "ERROR"
     assert result["error"]["message"] == "template rejects roles"
     assert not any(call[0] == "stream" for call in calls)
@@ -263,8 +396,8 @@ def test_extraction_failure_records_cases_without_aborting_candidate():
                 return "invalid extraction"
             return super().__call__(messages)
 
-    result = bake.bakeoff("qwen3-4b", stub=True, factory=BadExtractor)
-    assert result["status"] == "FAIL"
+    result, replies, requests = bake.bakeoff("qwen3-4b", stub=True, factory=BadExtractor)
+    assert result["status"] == "PENDING_VERDICTS"
     assert set(result["quality"]) == set(bake.run.SETS)
     for run in result["quality"]["memory"]["runs"]:
         assert run["counts"]["extracted"] == 0

@@ -13,7 +13,7 @@ from statistics import mean
 
 from evals import run
 from evals.scoring import gates
-from evals.stubs import stub_extractor, stub_judge, stub_model
+from evals.stubs import stub_extractor, stub_model
 from server.llm import MAX_REPLY_TOKENS
 from server.prompt import HISTORY_TOKENS, PromptAssembler, load_system_prompt
 
@@ -30,14 +30,73 @@ CANDIDATES = {
     "lfm3-1b7": ("LiquidAI/LFM3-1.7B-MLX-4bit", "91f3408", "vlm"),
     "qwen35-9b": ("mlx-community/Qwen3.5-9B-MLX-4bit", "938d891", "lm"),
 }
-JUDGE = ("mlx-community/phi-4-4bit", "fc0f8f2", "lm")
 SAMPLING = {"temperature": 0.7, "top_p": 0.9, "max_tokens": MAX_REPLY_TOKENS}
-JUDGE_SAMPLING = {"temperature": 0.0, "top_p": 1.0, "max_tokens": 256}
 REPEATS = 3
 
 
 def sha256(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class CallKeys:
+    def __init__(self):
+        self.occurrences = {}
+
+    def key(self, messages):
+        digest = sha256(json.dumps(messages, sort_keys=True, separators=(",", ":")))
+        occurrence = self.occurrences.get(digest, 0)
+        self.occurrences[digest] = occurrence + 1
+        return f"{digest}:{occurrence}"
+
+
+class RecordingModel:
+    def __init__(self, model):
+        self.model = model
+        self.keys = CallKeys()
+        self.calls = []
+
+    def record(self, messages, callback):
+        key = self.keys.key(messages)
+        reply = callback(messages)
+        self.calls.append({"key": key, "messages": messages, "reply": reply})
+        return reply
+
+    def __call__(self, messages):
+        return self.record(messages, self.model)
+
+    def conversation(self, messages):
+        return self.record(messages, self.model.conversation)
+
+
+class RecordingJudge:
+    def __init__(self):
+        self.keys = CallKeys()
+        self.calls = []
+
+    def __call__(self, messages):
+        self.calls.append({"key": self.keys.key(messages), "messages": messages})
+        return ""
+
+
+class Replay:
+    def __init__(self, rows, field):
+        self.keys = CallKeys()
+        self.answers = {}
+        if not isinstance(rows, list):
+            raise ValueError(f"{field} records must be a JSON list")
+        for row in rows:
+            key = row["key"]
+            if key in self.answers:
+                raise ValueError(f"duplicate {field} key: {key}")
+            if not isinstance(row[field], str):
+                raise ValueError(f"{field} must be text for key: {key}")
+            self.answers[key] = row[field]
+
+    def __call__(self, messages):
+        key = self.keys.key(messages)
+        if key not in self.answers:
+            raise KeyError(f"missing replay key: {key}")
+        return self.answers[key]
 
 
 def read_rows(name):
@@ -82,8 +141,6 @@ class StubModel:
     def __call__(self, messages):
         if messages[0]["content"].startswith("Extract"):
             return stub_extractor(messages)
-        if messages[0]["content"] != load_system_prompt():
-            return stub_judge(messages)
         return stub_model(messages)
 
     def conversation(self, messages):
@@ -121,6 +178,7 @@ class LocalModel:
         from mlx_lm import load, stream_generate
         from mlx_lm.models.cache import LRUPromptCache, make_prompt_cache
         from mlx_lm.sample_utils import make_sampler
+        from mlx_lm.tokenizer_utils import TokenizerWrapper
 
         path = snapshot_download(entry[0], revision=entry[1], local_files_only=True)
         self.resolved_revision = Path(path).name
@@ -151,6 +209,10 @@ class LocalModel:
             self.tokenizer = getattr(processor, "tokenizer", processor)
         else:
             self.model, self.tokenizer = load(path)
+        if not isinstance(self.tokenizer, TokenizerWrapper):
+            self.tokenizer = TokenizerWrapper(self.tokenizer)
+        if "<|endoftext|>" in self.tokenizer.get_vocab():
+            self.tokenizer.add_eos_token("<|endoftext|>")
         mx.eval(self.model.parameters())
         mx.synchronize()
         self.mx = mx
@@ -231,7 +293,7 @@ class LocalModel:
 
 
 def benchmark(model):
-    """Measure the candidate before loading the judge, including rolling history eviction."""
+    """Measure the candidate, including rolling history eviction."""
     history = []
     post_cap = 0
     turns = []
@@ -289,6 +351,60 @@ def average_runs(name, runs):
     }
 
 
+def pending_quality(name, quality):
+    metrics = {
+        "persona": {"malformed", "mood_accuracy"},
+        "crisis": set(quality["metrics"]),
+        "guardrail": {"malformed"},
+        "memory": {"malformed", "precision", "recall"},
+    }[name]
+    for result in [quality, *quality["runs"]]:
+        result["metrics"] = {k: v for k, v in result["metrics"].items() if k in metrics}
+        if name != "crisis":
+            result["gates"] = {}
+        result["status"] = "PENDING_VERDICTS"
+    for result in quality["runs"]:
+        result["counts"].pop("correct_answers", None)
+        for case in result["cases"]:
+            for key in ("scores", "passed", "refusal", "judge_errors", "correct_answers"):
+                case.pop(key, None)
+            for answer in case.get("answers", []):
+                answer.pop("passed", None)
+    return quality
+
+
+def evaluate_sets(model, judge, extractor, extraction, repeats):
+    for name in run.SETS:
+        yield (
+            name,
+            average_runs(
+                name,
+                [
+                    run.evaluate(
+                        name,
+                        read_rows(name),
+                        split="heldout",
+                        model=model,
+                        judge=judge,
+                        extractor=extractor,
+                        extraction_prompt=extraction,
+                    )
+                    for repeat in range(repeats)
+                ],
+            ),
+        )
+
+
+def score(result, replies, verdicts):
+    model = Replay(replies, "reply")
+    judge = Replay(verdicts, "answer")
+    quality = dict(evaluate_sets(model, judge, model, extraction_instructions(), result["repeats"]))
+    return result | {
+        "quality": quality,
+        "status": "PASS" if all(q["status"] == "PASS" for q in quality.values()) else "FAIL",
+    }
+
+
 def bakeoff(candidate, *, stub, factory=None):
     entry = CANDIDATES[candidate]
     extraction = extraction_instructions()
@@ -299,7 +415,6 @@ def bakeoff(candidate, *, stub, factory=None):
         "loader": entry[2],
         "backend": "stub" if stub else "mlx",
         "sampling": SAMPLING,
-        "judge": {"model_id": JUDGE[0], "revision": JUDGE[1], "sampling": JUDGE_SAMPLING},
         "system_prompt_sha256": sha256(load_system_prompt()),
         "judge_prompt_source_sha256": sha256(Path(run.__file__).read_text()),
         "judge_prompts_sha256": [],
@@ -319,7 +434,8 @@ def bakeoff(candidate, *, stub, factory=None):
             result["versions"][package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
             result["versions"][package] = None
-    judge_prompts = set()
+    recording = None
+    judge = RecordingJudge()
     try:
         if not stub and result["versions"]["mlx-lm"] != "0.32.2":
             raise ValueError("bake-off requires mlx-lm==0.32.2")
@@ -327,47 +443,50 @@ def bakeoff(candidate, *, stub, factory=None):
         model = factory(entry, SAMPLING)
         result["resolved_revision"] = model.resolved_revision
         result["performance"] = benchmark(model)
-        judge = factory(JUDGE, JUDGE_SAMPLING)
-        result["judge"]["resolved_revision"] = judge.resolved_revision
-
-        def recorded_judge(messages):
-            judge_prompts.add(sha256(messages[0]["content"]))
-            return judge(messages)
-
+        recording = RecordingModel(model)
+        # Keep completed sets if a later candidate call fails.
         result["quality"] = {}
-        for name in run.SETS:
-            runs = [
-                run.evaluate(
-                    name,
-                    read_rows(name),
-                    split="heldout",
-                    model=model.conversation,
-                    judge=recorded_judge,
-                    extractor=model,
-                    extraction_prompt=extraction,
-                )
-                for repeat in range(REPEATS)
-            ]
-            result["quality"][name] = average_runs(name, runs)
-        result["status"] = (
-            "PASS"
-            if all(quality["status"] == "PASS" for quality in result["quality"].values())
-            else "FAIL"
-        )
+        for name, quality in evaluate_sets(
+            recording.conversation, judge, recording, extraction, REPEATS
+        ):
+            result["quality"][name] = pending_quality(name, quality)
+        result["status"] = "PENDING_VERDICTS"
     except Exception as error:
         # Preserve failures (including chat-template errors) for this candidate's result file.
         result["error"] = {"type": type(error).__name__, "message": str(error)}
-    result["judge_prompts_sha256"] = sorted(judge_prompts)
-    return result
+    result["judge_prompts_sha256"] = sorted(
+        {sha256(call["messages"][0]["content"]) for call in judge.calls}
+    )
+    return result, recording.calls if recording else [], judge.calls
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("phase", nargs="?", choices=("run", "score"), default="run")
     parser.add_argument("--candidate", choices=CANDIDATES, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--verdicts", type=Path)
     args = parser.parse_args()
-    result = bakeoff(args.candidate, stub=os.environ.get("AMES_STUB") == "1")
+    if (args.phase == "score") != (args.verdicts is not None):
+        parser.error("--verdicts is required only for score")
     args.out.parent.mkdir(parents=True, exist_ok=True)
+    replies_path = args.out.parent / f"{args.candidate}.replies.json"
+    requests_path = args.out.parent / f"{args.candidate}.judge-requests.json"
+    if args.phase == "run":
+        result, replies, requests = bakeoff(args.candidate, stub=os.environ.get("AMES_STUB") == "1")
+        replies_path.write_text(json.dumps(replies, indent=2, allow_nan=False) + "\n")
+        requests_path.write_text(json.dumps(requests, indent=2, allow_nan=False) + "\n")
+    else:
+        try:
+            result = json.loads(args.out.read_text())
+            if result["candidate"] != args.candidate:
+                raise ValueError("result candidate does not match --candidate")
+            result.pop("error", None)
+            result = score(
+                result, json.loads(replies_path.read_text()), json.loads(args.verdicts.read_text())
+            )
+        except (OSError, ValueError, KeyError) as error:
+            parser.exit(2, f"score error: {error}\n")
     args.out.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n")
     print(f"{args.candidate} backend={result['backend']} {result['status']}")
     if result["status"] == "ERROR":

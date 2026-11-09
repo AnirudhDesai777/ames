@@ -1,7 +1,7 @@
 # Models
 
 Every model Ames runs, pinned to an exact revision. Hashes are SHA-256 of the
-weight files. The conversation LLM and the judge are added by #28 after the LLM
+weight files. The conversation LLM is added by #28 after the LLM
 bake-off (#12).
 
 | Role | Repository | Revision | Weight files (SHA-256) | License |
