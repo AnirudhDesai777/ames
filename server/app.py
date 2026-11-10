@@ -4,6 +4,7 @@ import asyncio
 import os
 import secrets
 import tempfile
+import traceback
 import webbrowser
 from contextlib import suppress
 from pathlib import Path
@@ -16,7 +17,7 @@ from loguru import logger
 from server.cascade import StubTranscription, ToneTTS, log_errors, model_services, tts_service
 from server.echo import echo_connection
 from server.events import Events
-from server.live import Conversation, run_live
+from server.live import Conversation, build_live
 
 HOSTS = {"127.0.0.1:8765", "localhost:8765"}
 DATA_DIR = Path.home() / "Library/Application Support/Ames"
@@ -37,6 +38,14 @@ def write_token(data_dir: Path, token: str):
             path.unlink(missing_ok=True)
 
 
+def log_failure(code: str, error: Exception):
+    # Exception messages and values can hold user speech; the type and place cannot.
+    frame = traceback.extract_tb(error.__traceback__)[-1]
+    logger.error(
+        "{}: {} at {}:{}", code, type(error).__name__, Path(frame.filename).name, frame.lineno
+    )
+
+
 class Session:
     def __init__(self, connection, stt, model, tts):
         self.connection = connection
@@ -48,15 +57,16 @@ class Session:
         self.tts = tts
         self.conversation = Conversation(self.events)
 
+    def prepare(self):
+        stt = self.stt.new_session() if hasattr(self.stt, "new_session") else StubTranscription()
+        tts = self.tts.new_session() if hasattr(self.tts, "new_session") else ToneTTS()
+        self.live = build_live(self.connection, stt, self.model, tts, self.conversation)
+
     async def run(self):
         try:
-            stt = (
-                self.stt.new_session() if hasattr(self.stt, "new_session") else StubTranscription()
-            )
-            tts = self.tts.new_session() if hasattr(self.tts, "new_session") else ToneTTS()
-            await run_live(self.connection, stt, self.model, tts, self.conversation)
-        except Exception:
-            logger.error("pipeline_failed")
+            await self.live()
+        except Exception as error:
+            log_failure("pipeline_failed", error)
             self.events.notice("session_ended", "The voice pipeline stopped. Start a new session.")
         finally:
             self.conversation.history.clear()
@@ -168,6 +178,14 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
             except Exception:
                 await session.connection.disconnect()
                 raise web.HTTPBadRequest(text="Invalid SDP offer") from None
+            try:
+                session.prepare()
+            except Exception as error:
+                log_failure("pipeline_setup_failed", error)
+                await session.connection.disconnect()
+                raise web.HTTPInternalServerError(
+                    text="The voice pipeline could not start. Check the server log."
+                ) from None
             if active:
                 try:
                     await active.close("session_replaced", "Another tab started a session.")

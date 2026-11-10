@@ -32,7 +32,11 @@ with its speed gate before accepting connections. Stub mode reports three
 loaded stubs. `POST /api/offer` accepts `{ "type": "offer", "sdp": "..." }` and
 returns an SDP answer, `pc_id`, and a random `session_id`. A valid new offer
 closes the previous session after sending `notice: session_replaced`. Invalid
-offers leave the active session alone.
+offers leave the active session alone. The pipeline is built before the offer
+is answered: if that fails, the offer returns 500 with a plain message, the
+active session is left alone, and the log records `pipeline_setup_failed` with
+the exception type and its file and line. Failure logs never include exception
+messages, because those can hold user speech.
 
 `server.live` connects WebRTC input to Parakeet, the capped persona prompt,
 mlx-lm, control-token sanitation, sentence splitting, Qwen, and WebRTC output.

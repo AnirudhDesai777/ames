@@ -196,13 +196,13 @@ async def test_pipeline_error_ends_live_session_without_hanging(monkeypatch):
     monkeypatch.setattr(live, "SmallWebRTCTransport", Mock(return_value=transport))
     events = Mock()
     await asyncio.wait_for(
-        live.run_live(
+        live.build_live(
             Mock(),
             BrokenSTT(),
             StubLanguageModel(),
             ToneTTS(),
             Conversation(events),
-        ),
+        )(),
         5,
     )
     events.notice.assert_called_once_with(
