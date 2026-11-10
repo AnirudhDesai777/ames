@@ -187,7 +187,9 @@ async def test_interruption_stops_audio_and_keeps_only_completed_sentences(voice
     assert interrupted.is_set() and cut.is_set()
     assert history == [
         {"role": "user", "content": "hi"},
-        {"role": "ames" if live else "assistant", "content": "Finished sentence."},
+        {"role": "ames", "content": "Finished sentence.", "mood": "neutral"}
+        if live
+        else {"role": "assistant", "content": "Finished sentence."},
     ]
     if live:
         finals = [
