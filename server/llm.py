@@ -59,6 +59,7 @@ class MLXLanguageModel:
             from mlx_lm import stream_generate
             from mlx_lm.generate import generation_stream
             from mlx_lm.models.cache import LRUPromptCache, make_prompt_cache
+            from mlx_lm.sample_utils import make_sampler
 
             if cancelled.is_set():
                 return
@@ -77,8 +78,16 @@ class MLXLanguageModel:
             if cache is None:
                 cache = make_prompt_cache(self.model)
             tokens = list(prompt)
+            # Replies sample at the bake-off settings; extraction stays greedy so
+            # the same turns give the same facts.
+            sampler = make_sampler(temp=0.7, top_p=0.9) if cache_name == "conversation" else None
             stream = stream_generate(
-                self.model, self.tokenizer, rest, prompt_cache=cache, max_tokens=MAX_REPLY_TOKENS
+                self.model,
+                self.tokenizer,
+                rest,
+                prompt_cache=cache,
+                max_tokens=MAX_REPLY_TOKENS,
+                sampler=sampler,
             )
             mx.synchronize()
         try:

@@ -62,6 +62,9 @@ async def test_stt_llm_and_tts_never_evaluate_mlx_concurrently(tmp_path, monkeyp
     )
     monkeypatch.setitem(sys.modules, "mlx_lm.generate", SimpleNamespace(generation_stream=object()))
     monkeypatch.setitem(
+        sys.modules, "mlx_lm.sample_utils", SimpleNamespace(make_sampler=lambda **kwargs: None)
+    )
+    monkeypatch.setitem(
         sys.modules,
         "mlx_lm.models.cache",
         SimpleNamespace(

@@ -48,6 +48,9 @@ def runtime(monkeypatch):
     monkeypatch.setitem(sys.modules, "mlx_lm", mlx)
     monkeypatch.setitem(sys.modules, "mlx_lm.generate", SimpleNamespace(generation_stream=object()))
     monkeypatch.setitem(sys.modules, "mlx_lm.models.cache", cache)
+    monkeypatch.setitem(
+        sys.modules, "mlx_lm.sample_utils", SimpleNamespace(make_sampler=lambda **kwargs: kwargs)
+    )
     return SimpleNamespace(mlx=mlx, cache=cache, tokenizer=tokenizer, threads=threads)
 
 
@@ -68,6 +71,11 @@ async def test_separate_caches_reuse_prefix_and_disable_thinking(tmp_path, runti
         assert all(
             call.kwargs["max_tokens"] == 256 for call in runtime.mlx.stream_generate.call_args_list
         )
+        assert [call.kwargs["sampler"] for call in runtime.mlx.stream_generate.call_args_list] == [
+            {"temp": 0.7, "top_p": 0.9},
+            None,
+            {"temp": 0.7, "top_p": 0.9},
+        ]
         runtime.tokenizer.apply_chat_template.assert_called_with(
             messages, tokenize=True, add_generation_prompt=True, enable_thinking=False
         )
