@@ -29,6 +29,7 @@ class Conversation:
         self.history = []
         self.turn_id = 0
         self.reply = ""
+        self.mood = "neutral"
         self.final = True
 
     def finish_reply(self):
@@ -37,6 +38,7 @@ class Conversation:
             self.final = True
 
     def state(self, mood):
+        self.mood = mood
         self.events.state(mood, self.turn_id)
 
 
@@ -61,11 +63,15 @@ class SessionPrompt(FrameProcessor):
                 conversation.turn_id += 1
                 conversation.reply = ""
                 conversation.final = False
+                # Her turns keep their control token in the prompt, or the model
+                # copies the bare turns and stops emitting it.
                 history = [
                     {
-                        **message,
-                        "role": "assistant" if message["role"] == "ames" else message["role"],
+                        "role": "assistant",
+                        "content": f"<state mood={message['mood']} crisis=0>\n{message['content']}",
                     }
+                    if message["role"] == "ames"
+                    else message
                     for message in conversation.history
                 ]
                 messages = await self.model.assemble(history, frame.text)
@@ -94,7 +100,9 @@ class SessionOutput(FrameProcessor):
                         conversation.history[-1]["content"] += " " + text
                         conversation.reply += " " + text
                     else:
-                        conversation.history.append({"role": "ames", "content": text})
+                        conversation.history.append(
+                            {"role": "ames", "content": text, "mood": conversation.mood}
+                        )
                         conversation.reply = text
                     conversation.events.transcript(
                         "ames", conversation.reply, False, conversation.turn_id

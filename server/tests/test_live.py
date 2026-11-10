@@ -90,17 +90,15 @@ async def test_wav_to_spoken_audio_and_next_prompt(monkeypatch):
     assert prompts[0][-1] == {"role": "user", "content": "hi there"}
     assert prompts[1][1:] == [
         {"role": "user", "content": "hi there"},
-        {"role": "assistant", "content": "Hello. How are you?"},
+        {"role": "assistant", "content": "<state mood=amused crisis=0>\nHello. How are you?"},
         {"role": "user", "content": "hi there"},
     ]
-    assert (
-        conversation.history
-        == [
-            {"role": "user", "content": "hi there"},
-            {"role": "ames", "content": "Hello. How are you?"},
-        ]
-        * 2
-    )
+    assert conversation.history == [
+        {"role": "user", "content": "hi there"},
+        {"role": "ames", "content": "Hello. How are you?", "mood": "amused"},
+        {"role": "user", "content": "hi there"},
+        {"role": "ames", "content": "Hello. How are you?", "mood": "neutral"},
+    ]
     finals = [call.args for call in events.transcript.call_args_list if call.args[2]]
     assert finals == [
         ("user", "hi there", True, 1),
@@ -151,7 +149,11 @@ async def test_interruption_finalizes_only_completed_sentence_once():
             LLMFullResponseEndFrame(),
         ],
     )
-    assert conversation.history[-1] == {"role": "ames", "content": "Finished sentence."}
+    assert conversation.history[-1] == {
+        "role": "ames",
+        "content": "Finished sentence.",
+        "mood": "neutral",
+    }
     assert [call.args for call in events.transcript.call_args_list] == [
         ("ames", "Finished sentence.", False, 1),
         ("ames", "Finished sentence.", True, 1),
