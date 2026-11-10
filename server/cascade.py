@@ -4,6 +4,7 @@ import asyncio
 import math
 import os
 import platform
+import sys
 from contextlib import aclosing
 from pathlib import Path
 
@@ -37,6 +38,13 @@ from server.control_tokens import ParserState, parse_chunk
 from server.llm import MODEL_DIR, MLXLanguageModel, StubLanguageModel, configure_models
 from server.stt import ParakeetSTTService
 from server.tts import MODEL_NAME, QwenTTSService
+
+
+def log_errors(sink=sys.stderr):
+    # Library debug logs can include SDP or data-channel messages, and loguru's
+    # default tracebacks print variable values, which can hold user speech.
+    logger.remove()
+    logger.add(sink, level="ERROR", format="{message}", diagnose=False, backtrace=False)
 
 
 class StubVAD(VADAnalyzer):
