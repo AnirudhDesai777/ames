@@ -197,3 +197,25 @@ async def test_barge_in_requires_at_least_300ms_of_vad_speech(windows, interrupt
     frames += [InputAudioRawFrame(b"\x00\x00" * 512, 16000, 1), SleepFrame(0.05)]
     received, upstream = await run_test(Pipeline(stages), frames_to_send=frames)
     assert any(isinstance(f, InterruptionFrame) for f in received) is interrupts
+
+
+def test_error_log_omits_variable_values():
+    import sys
+
+    from loguru import logger
+
+    lines = []
+    cascade.log_errors(lines.append)
+    try:
+        spoken = "private-marker"
+        try:
+            int(spoken)
+        except ValueError:
+            logger.exception("local_transcription_failed")
+    finally:
+        logger.remove()
+        logger.add(sys.stderr)
+    output = "".join(lines)
+    assert "ValueError" in output
+    # The exception message is the caller's to keep clean; values must not be annotated.
+    assert output.count(spoken) == 1

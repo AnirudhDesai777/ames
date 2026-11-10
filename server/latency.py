@@ -5,11 +5,9 @@ import asyncio
 import json
 import math
 import os
-import sys
 import wave
 from pathlib import Path
 
-from loguru import logger
 from pipecat.frames.frames import (
     AggregatedTextFrame,
     EndFrame,
@@ -35,6 +33,7 @@ from server.cascade import (
     SpokenHistory,
     StubTranscription,
     cascade_stages,
+    log_errors,
     model_services,
     tts_service,
 )
@@ -255,8 +254,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=MANIFEST)
     args = parser.parse_args()
-    logger.remove()
-    logger.add(sys.stderr, level="ERROR", format="{message}")
+    log_errors()
     try:
         report(asyncio.run(measure(args.manifest)))
     except (OSError, ValueError, RuntimeError, TimeoutError, wave.Error, EOFError) as error:

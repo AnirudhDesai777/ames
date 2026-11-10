@@ -3,7 +3,6 @@
 import asyncio
 import os
 import secrets
-import sys
 import tempfile
 import webbrowser
 from contextlib import suppress
@@ -14,7 +13,7 @@ from aiohttp import web
 from aiortc.sdp import SessionDescription
 from loguru import logger
 
-from server.cascade import StubTranscription, ToneTTS, model_services, tts_service
+from server.cascade import StubTranscription, ToneTTS, log_errors, model_services, tts_service
 from server.echo import echo_connection
 from server.events import Events
 from server.live import Conversation, run_live
@@ -195,9 +194,7 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
 
 def main():
     os.umask(0o077)
-    # Library debug logs can include SDP or data-channel messages.
-    logger.remove()
-    logger.add(sys.stderr, level="ERROR", format="{message}")
+    log_errors()
     token = secrets.token_urlsafe(32)
 
     def open_client(message):
