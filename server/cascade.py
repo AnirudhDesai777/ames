@@ -189,6 +189,8 @@ def barge_in_stages(vad_analyzer):
     from pipecat.turns.user_turn_processor import UserTurnProcessor
     from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
+    # An analyzer reports rate 0 until a pipeline starts it; every pipeline here takes 16 kHz.
+    vad_analyzer.set_sample_rate(16000)
     # Pipecat rounds to the nearest VAD window; round up to require at least 300 ms.
     window = vad_analyzer.num_frames_required() / vad_analyzer.sample_rate
     start_secs = math.ceil(0.3 / window) * window
