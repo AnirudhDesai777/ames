@@ -27,6 +27,14 @@ async def client(tmp_path, monkeypatch):
         yield client
 
 
+@pytest.fixture
+def logged():
+    lines = []
+    sink = app_module.logger.add(lines.append, format="{message}")
+    yield lines
+    app_module.logger.remove(sink)
+
+
 def headers(client, **extra):
     return {"Host": "127.0.0.1:8765", "X-Ames-Token": client.token, **extra}
 
@@ -164,6 +172,37 @@ async def test_invalid_sdp_closes_new_connection(client, monkeypatch):
     connection.disconnect.assert_awaited_once()
 
 
+async def test_failed_pipeline_setup_rejects_offer_and_keeps_active_session(
+    client, monkeypatch, logged
+):
+    connections = []
+
+    def connection_factory():
+        connection = Mock()
+        connection.pc.connectionState = "connected"
+        connection.initialize = AsyncMock()
+        connection.disconnect = AsyncMock()
+        connection.get_answer.return_value = {"type": "answer", "sdp": "stub"}
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(app_module, "echo_connection", connection_factory)
+    build = Mock(side_effect=[asyncio.Event().wait, ZeroDivisionError("private")])
+    monkeypatch.setattr(app_module, "build_live", build)
+    offer = {"type": "offer", "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"}
+    assert (await client.post("/api/offer", headers=headers(client), json=offer)).status == 200
+
+    response = await client.post("/api/offer", headers=headers(client), json=offer)
+    assert response.status == 500
+    assert "could not start" in await response.text()
+    assert "pipeline_setup_failed: ZeroDivisionError at " in "".join(logged)
+    assert "private" not in "".join(logged) + await response.text()
+    connections[1].disconnect.assert_awaited_once()
+    connections[0].disconnect.assert_not_awaited()
+    # Only the opening state and speaker events: the live session received no notice.
+    assert connections[0].send_app_message.call_count == 2
+
+
 async def test_failed_session_close_disconnects_replacement(client, monkeypatch, caplog):
     connections = []
 
@@ -185,7 +224,7 @@ async def test_failed_session_close_disconnects_replacement(client, monkeypatch,
 
     monkeypatch.setattr(app_module, "echo_connection", connection_factory)
     run_live = AsyncMock()
-    monkeypatch.setattr(app_module, "run_live", run_live)
+    monkeypatch.setattr(app_module, "build_live", Mock(return_value=run_live))
     offer = {"type": "offer", "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"}
     first = await client.post("/api/offer", headers=headers(client), json=offer)
     assert first.status == 200
@@ -391,7 +430,7 @@ async def test_failed_eager_load_cleans_up_without_accepting_offers(tmp_path, mo
     tts.cleanup.assert_awaited_once()
 
 
-async def test_session_failure_ends_with_private_notice_and_discards_history(monkeypatch):
+async def test_session_failure_ends_with_private_notice_and_discards_history(monkeypatch, logged):
     monkeypatch.setenv("AMES_STUB", "1")
     stt, model = app_module.model_services()
     tts = app_module.tts_service()
@@ -401,8 +440,12 @@ async def test_session_failure_ends_with_private_notice_and_discards_history(mon
     session = app_module.Session(connection, stt, model, tts)
     session.conversation.history.append({"role": "user", "content": "private"})
     session.conversation.reply = "private reply"
-    monkeypatch.setattr(app_module, "run_live", AsyncMock(side_effect=RuntimeError("private")))
+    failing = AsyncMock(side_effect=RuntimeError("private"))
+    monkeypatch.setattr(app_module, "build_live", Mock(return_value=failing))
+    session.prepare()
     await session.run()
+    assert "pipeline_failed: RuntimeError at " in "".join(logged)
+    assert "private" not in "".join(logged)
     assert session.conversation.history == []
     assert session.conversation.reply == ""
     model.clear_history.assert_awaited_once()

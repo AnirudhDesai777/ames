@@ -122,7 +122,12 @@ def live_stages(stt, model, tts, conversation, output):
     ]
 
 
-async def run_live(connection, stt, model, tts, conversation):
+def build_live(connection, stt, model, tts, conversation):
+    """Build the pipeline and return its run coroutine function.
+
+    Building is separate so a setup failure can reject the offer instead of
+    ending a session the client believes has started.
+    """
     transport = SmallWebRTCTransport(
         connection, TransportParams(audio_in_enabled=True, audio_out_enabled=True)
     )
@@ -146,5 +151,8 @@ async def run_live(connection, stt, model, tts, conversation):
         )
         await worker.cancel()
 
-    await runner.add_workers(worker)
-    await runner.run()
+    async def run():
+        await runner.add_workers(worker)
+        await runner.run()
+
+    return run
