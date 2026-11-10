@@ -44,18 +44,20 @@ export function startSession(
   const controller = new AbortController();
   let stream: MediaStream | undefined;
   let closed = false;
-  const close = () => {
+  let open = false;
+  const close = (reason?: Error) => {
     if (closed) return;
     closed = true;
-    controller.abort();
+    controller.abort(reason);
     peer.close();
     stream?.getTracks().forEach((track) => { track.stop(); });
     audio.srcObject = null;
   };
   const lost = () => {
     if (closed) return;
-    close();
-    disconnected();
+    // Before the channel opens there is no session to lose: reject `ready` with the cause.
+    close(open ? undefined : new Error("Could not reach the voice server. Check that it is still running, then reconnect."));
+    if (open) disconnected();
   };
   peer.addEventListener("connectionstatechange", () => {
     if (["failed", "closed"].includes(peer.connectionState)) lost();
@@ -114,11 +116,21 @@ export function startSession(
         body: JSON.stringify(peer.localDescription),
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`Offer rejected (${response.status}). Reopen the server link.`);
+      if (!response.ok) {
+        throw new Error(response.status >= 500 ? await response.text() : `Offer rejected (${response.status}). Reopen the server link.`);
+      }
       const answer = await response.json();
       controller.signal.throwIfAborted();
       await peer.setRemoteDescription({ type: answer.type, sdp: answer.sdp });
       controller.signal.throwIfAborted();
+      // The answer only starts the handshake; the session exists once the channel opens.
+      if (channel.readyState !== "open") {
+        await new Promise<void>((resolve, reject) => {
+          channel.addEventListener("open", () => resolve(), { once: true });
+          controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true });
+        });
+      }
+      open = true;
     } catch (error) {
       close();
       throw error;

@@ -14,7 +14,7 @@ test("peer configurations do not share a mutable ICE list", () => {
   assert.deepEqual(peerConfiguration().iceServers, []);
 });
 
-function browser(t, { status = 200, permissionError, gather = false, permission } = {}) {
+function browser(t, { status = 200, permissionError, gather = false, permission, opens = true } = {}) {
   const peerDescriptor = Object.getOwnPropertyDescriptor(globalThis, "RTCPeerConnection");
   const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   t.after(() => {
@@ -51,12 +51,16 @@ function browser(t, { status = 200, permissionError, gather = false, permission 
         this.dispatchEvent(new Event("icegatheringstatechange"));
       });
     }
-    async setRemoteDescription(description) { this.remoteDescription = description; }
+    async setRemoteDescription(description) {
+      this.remoteDescription = description;
+      if (opens) this.channel.readyState = "open";
+    }
     close() { this.connectionState = "closed"; }
   };
   const fetch = t.mock.method(globalThis, "fetch", async () => {
     assert.equal(peer.iceGatheringState, "complete");
-    return { ok: status === 200, status, json: async () => ({ type: "answer", sdp: "answer-sdp" }) };
+    return { ok: status === 200, status, text: async () => "The voice pipeline could not start.",
+      json: async () => ({ type: "answer", sdp: "answer-sdp" }) };
   });
   return { get peer() { return peer; }, track, stream, fetch, audio: { srcObject: null } };
 }
@@ -84,6 +88,37 @@ test("a rejected offer releases the microphone and peer", async (t) => {
   await assert.rejects(startSession("stale-token", setup.audio, () => {}, () => {}).ready, /Offer rejected \(401\)/);
   assert.equal(setup.peer.connectionState, "closed");
   assert.equal(setup.track.stop.mock.callCount(), 1);
+});
+
+test("a server failure shows the server's own message", async (t) => {
+  const setup = browser(t, { status: 500 });
+  await assert.rejects(startSession("token", setup.audio, () => {}, () => {}).ready, /voice pipeline could not start/);
+  assert.equal(setup.track.stop.mock.callCount(), 1);
+});
+
+test("a peer that fails before the channel opens rejects instead of reporting a lost session", async (t) => {
+  const setup = browser(t, { opens: false });
+  const lost = t.mock.fn();
+  const session = startSession("token", setup.audio, () => {}, lost);
+  while (!setup.peer?.remoteDescription) await new Promise((resolve) => setImmediate(resolve));
+  setup.peer.connectionState = "failed";
+  setup.peer.dispatchEvent(new Event("connectionstatechange"));
+  await assert.rejects(session.ready, /Could not reach the voice server/);
+  assert.equal(lost.mock.callCount(), 0);
+  assert.equal(setup.track.stop.mock.callCount(), 1);
+});
+
+test("the session is ready only once the data channel opens", async (t) => {
+  const setup = browser(t, { opens: false });
+  const session = startSession("token", setup.audio, () => {}, () => {});
+  let ready = false;
+  session.ready.then(() => { ready = true; });
+  while (!setup.peer?.remoteDescription) await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(ready, false);
+  setup.peer.channel.dispatchEvent(new Event("open"));
+  await session.ready;
+  session.close();
 });
 
 test("microphone denial releases the peer without sending an offer", async (t) => {

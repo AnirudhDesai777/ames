@@ -200,6 +200,16 @@ for (const code of ["session_replaced", "session_ended"]) {
   });
 }
 
+test("the orb says Connecting, not Listening, until the session is ready", async () => {
+  const ui = await connected({ pending: true });
+  assert.equal(ui.element("presence").textContent, "Connecting");
+  assert.equal(ui.element("mute").disabled, true);
+  ui.sessions[0].resolve();
+  await tick();
+  assert.equal(ui.element("presence").textContent, "Listening");
+  assert.equal(ui.element("mute").disabled, false);
+});
+
 test("server_error notice leaves the conversation active", async () => {
   const ui = await connected();
   ui.receive({ type: "notice", code: "server_error", text: "Reply timed out. Try again." });

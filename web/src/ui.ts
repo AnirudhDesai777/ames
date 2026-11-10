@@ -27,7 +27,7 @@ export function mountConversation(
   const turns = new Map<string, { row: HTMLLIElement; text: HTMLParagraphElement; final: boolean }>();
   let seen = false;
   try { seen = browser.localStorage.getItem("ames-advisory-seen") === "true"; } catch { /* Site storage may be disabled. */ }
-  let running = false;
+  let phase: "idle" | "connecting" | "connected" = "idle";
   let muted = false;
   let session: Session | undefined;
   let attempt = 0;
@@ -35,16 +35,18 @@ export function mountConversation(
   let who: Speaker = "none";
   let moodTurn = -1;
 
+  // A function, so TypeScript does not narrow `phase` across an await it cannot see through.
+  const stale = (current: number) => current !== attempt || phase === "idle";
   const renderOrb = () => {
     orb.dataset.mood = mood;
     orb.dataset.speaking = who;
-    presence.textContent = who === "ames" ? "Ames is speaking" : who === "user" ? "You're speaking" : running ? "Listening" : "Ready to talk";
+    presence.textContent = who === "ames" ? "Ames is speaking" : who === "user" ? "You're speaking" : phase === "connected" ? "Listening" : phase === "connecting" ? "Connecting" : "Ready to talk";
     moodLabel.textContent = mood;
     orb.setAttribute("aria-label", `${presence.textContent}. Mood: ${mood}.`);
   };
   const finish = (text: string, button = "Start conversation") => {
-    const wasRunning = running;
-    running = false;
+    const wasRunning = phase !== "idle";
+    phase = "idle";
     session?.close();
     session = undefined;
     muted = false;
@@ -117,9 +119,9 @@ export function mountConversation(
     start.focus();
   });
   start.addEventListener("click", async () => {
-    if (!token || !seen || running) return;
+    if (!token || !seen || phase !== "idle") return;
     const current = ++attempt;
-    running = true;
+    phase = "connecting";
     notice.hidden = true;
     notice.textContent = "";
     delete notice.dataset.code;
@@ -134,9 +136,9 @@ export function mountConversation(
     renderOrb();
     try {
       const next = connect(token, audio, (event) => {
-        if (current === attempt && running) receive(event);
+        if (!stale(current)) receive(event);
       }, () => {
-        if (current !== attempt || !running) return;
+        if (stale(current)) return;
         finish("Disconnected", "Reconnect");
         if (notice.dataset.code !== "server_error") {
           showNotice("Connection lost. Reconnect to start a new session.", "connection_lost");
@@ -144,11 +146,13 @@ export function mountConversation(
       });
       session = next;
       await next.ready;
-      if (current !== attempt || !running) return;
+      if (stale(current)) return;
+      phase = "connected";
       status.textContent = "Connected";
       mute.disabled = false;
+      renderOrb();
     } catch (error) {
-      if (current !== attempt || !running) return;
+      if (stale(current)) return;
       finish("Could not connect", "Reconnect");
       const denied = error instanceof Error && ["NotAllowedError", "PermissionDeniedError"].includes(error.name);
       showNotice(denied
@@ -157,20 +161,20 @@ export function mountConversation(
     }
   });
   mute.addEventListener("click", () => {
-    if (!running || mute.disabled) return;
+    if (phase !== "connected") return;
     muted = !muted;
     session?.setMuted(muted);
     mute.setAttribute("aria-pressed", String(muted));
     mute.textContent = muted ? "Unmute microphone" : "Mute microphone";
   });
   end.addEventListener("click", () => {
-    if (!running) return;
+    if (phase === "idle") return;
     ++attempt;
     finish("Session ended");
   });
   return () => {
     ++attempt;
-    running = false;
+    phase = "idle";
     session?.close();
   };
 }
