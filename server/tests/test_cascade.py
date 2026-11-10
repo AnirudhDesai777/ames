@@ -191,7 +191,6 @@ async def test_barge_in_requires_at_least_300ms_of_vad_speech(windows, interrupt
             return 1 if audio.strip(b"\x00") else 0
 
     vad = VAD(sample_rate=16000, params=VADParams(min_volume=0))
-    vad.set_sample_rate(16000)
     stages = cascade.barge_in_stages(vad)
     frames = [InputAudioRawFrame(b"\x00\x40" * 512, 16000, 1) for i in range(windows)]
     frames += [InputAudioRawFrame(b"\x00\x00" * 512, 16000, 1), SleepFrame(0.05)]
