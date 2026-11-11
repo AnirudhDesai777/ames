@@ -107,7 +107,7 @@ async def test_token_timeout_emits_error_without_response_end(monkeypatch):
     service = LocalLLMService(HungModel())
     service.push_frame = AsyncMock()
     service.push_error = AsyncMock()
-    await service.respond([])
+    await service.respond(LLMContext([]))
     service.push_error.assert_awaited_once_with("local_generation_failed")
     assert closed == [True]
     assert [type(call.args[0]) for call in service.push_frame.await_args_list] == [

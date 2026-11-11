@@ -17,6 +17,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.services.settings import TTSSettings
 from pipecat.services.tts_service import TTSService
+from pipecat.utils.tracing.service_decorators import traced_tts
 
 from server.llm import configure_models
 from server.mlx_runtime import MLX_LOCK
@@ -133,6 +134,7 @@ class QwenTTSService(TTSService):
             self.cancelled.set()
         await super().process_frame(frame, direction)
 
+    @traced_tts
     async def run_tts(self, text, context_id):
         loop = asyncio.get_running_loop()
         queue = asyncio.Queue()
