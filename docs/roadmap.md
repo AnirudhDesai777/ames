@@ -1,12 +1,16 @@
 # Ames roadmap after v1
 
-Nothing here is built until v1 ships (launch checklist #10 complete), except the v1 memory item, which must ship before launch. Each item has a backlog issue.
+Nothing here is built until v1 ships (launch checklist #10 complete), except the items under "Planned for v1", which must ship before launch. Design v8 is a proposal the maintainer has not yet confirmed: it makes Ames a private thought partner with no moods, and the items marked PROPOSED below depend on it. Each item has a backlog issue.
 
 ## Planned for v1, not built yet
 
 ### Memory (#30, #31, #32)
 
 The maintainer decided on 2026-11-10 (design v7) that memory across sessions is required before the public v1 launch. Today the code keeps history in server memory only, and the storage layer from #27 in `server/memory/` is unused. Still to build, as designed in design section 6: idle-time fact extraction (#30), retrieval into the late block (#31), and the memory API and panel (#32). Wiring then adds turn rows, the retrieval slot and the idle signal, the crisis exit marks stored turns, and the memory gate (design 10.3) and the extraction load run (10.5) apply. bolt-e4b scored 0.28 precision and 0.10 recall on extraction in the bake-off, so extraction quality needs work first: a tighter prompt, fewer predicates, or fine-tuning.
+
+### Context summarising (PROPOSED, design v8 section 5.5)
+
+When history nears the 3000-token cap, the LLM summarises the oldest turns while idle and the summary replaces them at the front of history. Durable facts still go through memory extraction. Builds on chunked history trimming (#86). Not built and no issue yet.
 
 ## v1.x
 
@@ -20,7 +24,13 @@ Docker Compose for Linux and Windows (WSL2) machines with an NVIDIA GPU. Docker 
 
 ### Web search (#5)
 
-Opt-in, off by default, with a visible indicator whenever she searches. Turning it on breaks the "nothing leaves your machine" promise for search queries, and the UI must say so. Needs tool calling from the chosen LLM and a search backend.
+After v1 (PROPOSED in design v8). Opt-in, off by default, with a visible indicator whenever she searches. Turning it on breaks the "nothing leaves your machine" promise for search queries, and the UI must say so. Needs tool calling from the chosen LLM and a search backend.
+
+## Proposed in design v8, after v1
+
+- A phone client (#102).
+- A smaller fine-tuned LLM (#29). Without moods the fine-tune targets the thought-partner replies and the crisis flag, not tone.
+- A smaller TTS. Instruction control is no longer a requirement, which reopens options that the voice bake-off excluded for ignoring instructions. Unverified by listening.
 
 ## Preference tuning (#7)
 
