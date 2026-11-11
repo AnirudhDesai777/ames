@@ -7,6 +7,7 @@ Ames v1 is a browser client plus one Python server process. The three models run
 The Mermaid source below is the source of truth; the PNG is a render of it.
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 90, "rankSpacing": 110}}}%%
 flowchart TB
     user["<b>User</b><br/>[Person]<br/>Talks to Ames by voice"]
 
@@ -36,13 +37,15 @@ flowchart TB
     http -->|"Creates and ends sessions<br/>[Python call]"| pipeline
     pipeline -->|"Audio segments<br/>[Python call]"| stt
     pipeline -->|"Prompt in, tokens out<br/>[Python call]"| llm
-    pipeline -->|"Sentences in, PCM audio out<br/>[Python call]"| tts
+    pipeline -->|"Sentences in, audio out<br/>[Python call]"| tts
     pipeline -->|"Reads and appends turns<br/>[Python call]"| hist
     http -->|"Writes token at startup<br/>[file write]"| files
     stt -->|"Loads weights<br/>[file read]"| files
     llm -->|"Loads weights<br/>[file read, path from AMES_LLM_MODEL]"| files
     tts -->|"Loads weights<br/>[file read]"| files
-    pipeline -.->|"Planned: facts and turns<br/>[sqlite3]"| mem
+    pipeline -.->|"Planned: facts, turns<br/>[sqlite3]"| mem
+    tts ~~~ mem
+    files ~~~ mem
 
     classDef person fill:#08427b,stroke:#052e56,color:#ffffff
     classDef cont fill:#438dd5,stroke:#2e6295,color:#ffffff
