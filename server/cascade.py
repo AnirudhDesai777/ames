@@ -107,7 +107,7 @@ class LocalLLMService(LLMService):
             if self.generation:
                 self.generation.cancel()
         if direction == FrameDirection.DOWNSTREAM and isinstance(frame, LLMContextFrame):
-            self.generation = asyncio.create_task(self.respond(frame.context.get_messages()))
+            self.generation = asyncio.create_task(self.respond(frame.context))
             try:
                 await self.generation
             except asyncio.CancelledError:
@@ -118,10 +118,10 @@ class LocalLLMService(LLMService):
         else:
             await self.push_frame(frame, direction)
 
-    async def respond(self, messages):
+    async def respond(self, context):
         await self.push_frame(LLMFullResponseStartFrame())
         try:
-            async with aclosing(self.model.tokens(messages)) as tokens:
+            async with aclosing(self.model.tokens(context.get_messages())) as tokens:
                 while True:
                     try:
                         async with asyncio.timeout(10):

@@ -74,6 +74,25 @@ arm64. It is not needed for the echo or stub harness. HTTP and WebRTC integratio
 tests use only local sockets; they do not contact external services. The ICE regression test
 also checks the underlying aiortc configuration, where `None` would enable STUN.
 
+## Local tracing (development only)
+
+With `AMES_TRACE=1` the server sends OpenTelemetry spans for each turn (STT, LLM and
+TTS, with timings) to a Langfuse running on this machine. It is off by default: with
+the flag unset the server does not load `server.tracing`, the exporter or the tracing
+wrappers on the services, and makes no tracing connection. Pipecat still imports the
+OpenTelemetry API when the dev group is installed. The spans contain conversation text, a dev-only
+exception to design 9.2. The tracing packages are in the `dev` dependency group, so
+`uv sync --locked` installs them.
+
+```sh
+AMES_TRACE=1 LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... \
+  uv run --locked python -m server.app
+```
+
+`LANGFUSE_BASE_URL` defaults to `http://localhost:3300`. Its host must be
+`localhost`, `127.0.0.1` or `::1`; anything else, or a missing key, stops startup with
+a message. Create the keys in the Langfuse project settings; never commit them.
+
 ## Recorded cascade and latency
 
 `server.cascade` uses local Parakeet TDT 0.6B v2 MLX transcription,
