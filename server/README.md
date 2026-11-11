@@ -49,7 +49,7 @@ transport playback. A cut sentence and queued sentences are dropped. History
 and LLM prompt caches are cleared when the session ends. Conversation text is
 never written to disk, no memory repository is opened, and the late block is
 empty. The prompt maps the UI's `ames` role to `assistant` and retains at most
-3000 history content tokens. Retrieval and extraction remain v1.1 work.
+3000 history content tokens. Retrieval and extraction are planned for v1 and are not built yet.
 
 `server.events.Events` wraps transcript, speaking, state, and notice payloads
 from design 5.4 in Pipecat RTVI `server-message` envelopes. Initial neutral state
@@ -216,7 +216,7 @@ Changing memory facts affects only the final user message. The persona and retai
 history stay byte-identical until old history drops off the front. The builder
 copies messages and stores no history; the caller owns session boundaries and
 supplies only completed spoken text. Live sessions supply an empty late block;
-retrieval belongs to S5c in v1.1. The eval runner shares the persona loader.
+retrieval belongs to S5c, planned for v1 and not built yet. The eval runner shares the persona loader.
 
 Run the prefix-stability and history-cap checks without models:
 
@@ -268,7 +268,7 @@ including turns marked before a restart, and leaves pending turns for extraction
 Retention does not advance the user-delete epoch.
 
 S5a adds storage only. Durable turn recording, extraction, retrieval, and the
-memory API and panel remain in v1.1. Run the repository,
+memory API and panel are planned for v1 and not built yet. Run the repository,
 cascade-delete and retention checks without models or network access:
 
 ```sh
