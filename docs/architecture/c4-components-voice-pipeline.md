@@ -2,8 +2,12 @@
 
 The live pipeline inside the server, in the order frames flow. Source: `server/live.py` (`build_live`, `live_stages`), `server/cascade.py` (`cascade_stages`), `server/prompt.py`, `server/control_tokens.py`, `server/events.py`.
 
+![C4 voice pipeline component diagram](c4-components-voice-pipeline.png)
+
+The Mermaid source below is the source of truth; the PNG is a render of it.
+
 ```mermaid
-flowchart LR
+flowchart TB
     browser["<b>Web client</b><br/>[Container]<br/>Mic and speaker"]
 
     subgraph pipe["Voice pipeline [Pipecat pipeline, one per session]"]

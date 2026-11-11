@@ -2,6 +2,10 @@
 
 Ames v1 is a browser client plus one Python server process. The three models run inside that process on MLX, so they are shown as in-process modules, not as separate services. Source: `docs/design.md` sections 5 and 9, `server/app.py`, `server/README.md`.
 
+![C4 container diagram](c4-containers.png)
+
+The Mermaid source below is the source of truth; the PNG is a render of it.
+
 ```mermaid
 flowchart TB
     user["<b>User</b><br/>[Person]<br/>Talks to Ames by voice"]

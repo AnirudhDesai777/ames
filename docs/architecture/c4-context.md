@@ -2,6 +2,10 @@
 
 Ames is a local voice companion. One person talks to it in Chrome on their own Apple Silicon Mac, and every model runs on that Mac. Source: `docs/design.md` sections 1, 3 and 9.3.
 
+![C4 context diagram](c4-context.png)
+
+The Mermaid source below is the source of truth; the PNG is a render of it.
+
 ```mermaid
 flowchart TB
     user["<b>User</b><br/>[Person]<br/>Talks to Ames by voice in Chrome"]
