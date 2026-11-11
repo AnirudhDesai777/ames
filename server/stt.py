@@ -11,7 +11,6 @@ from pipecat.services.settings import STTSettings
 from pipecat.services.stt_service import SegmentedSTTService
 from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
-from pipecat.utils.tracing.service_decorators import traced_stt
 
 from server.llm import configure_models
 from server.mlx_runtime import MLX_LOCK
@@ -63,7 +62,6 @@ class ParakeetSTTService(SegmentedSTTService):
             self.mx.synchronize()
             return result.text
 
-    @traced_stt
     async def run_stt(self, audio):
         await self.start_processing_metrics()
         try:

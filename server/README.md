@@ -77,8 +77,10 @@ also checks the underlying aiortc configuration, where `None` would enable STUN.
 ## Local tracing (development only)
 
 With `AMES_TRACE=1` the server sends OpenTelemetry spans for each turn (STT, LLM and
-TTS, with timings) to a Langfuse running on this machine. It is off by default and a
-normal run imports none of it. The spans contain conversation text, a dev-only
+TTS, with timings) to a Langfuse running on this machine. It is off by default: with
+the flag unset the server does not load `server.tracing`, the exporter or the tracing
+wrappers on the services, and makes no tracing connection. Pipecat still imports the
+OpenTelemetry API when the dev group is installed. The spans contain conversation text, a dev-only
 exception to design 9.2. The tracing packages are in the `dev` dependency group, so
 `uv sync --locked` installs them.
 

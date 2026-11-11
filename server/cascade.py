@@ -33,7 +33,6 @@ from pipecat.services.stt_service import SegmentedSTTService
 from pipecat.services.tts_service import TTSService
 from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 from pipecat.utils.time import time_now_iso8601
-from pipecat.utils.tracing.service_decorators import traced_llm
 
 from server.control_tokens import ParserState, parse_chunk
 from server.llm import MODEL_DIR, MLXLanguageModel, StubLanguageModel, configure_models
@@ -119,7 +118,6 @@ class LocalLLMService(LLMService):
         else:
             await self.push_frame(frame, direction)
 
-    @traced_llm
     async def respond(self, context):
         await self.push_frame(LLMFullResponseStartFrame())
         try:
