@@ -4,7 +4,7 @@ A local-only voice companion that runs in your browser. Every model runs on your
 
 Status: live pipeline wired. The authenticated loopback app connects browser
 audio to local Parakeet, the persona prompt, mlx-lm, and Qwen TTS over WebRTC.
-History stays in server memory for the current session; v1 has no durable memory.
+History stays in server memory for the current session. Memory across sessions is planned for v1 and is not built yet; `server/memory/` is unused.
 
 The real-voice minimum is Apple Silicon with 24 GB RAM and a TTS startup
 real-time factor at most 0.9 (reference: M4 Pro, 24 GB). No fallback voice.

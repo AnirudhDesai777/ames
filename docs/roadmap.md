@@ -1,16 +1,18 @@
 # Ames roadmap after v1
 
-Nothing here is built until v1 ships (launch checklist #10 complete). Each item has a backlog issue.
+Nothing here is built until v1 ships (launch checklist #10 complete), except the v1 memory item, which must ship before launch. Each item has a backlog issue.
+
+## Planned for v1, not built yet
+
+### Memory (#30, #31, #32)
+
+The maintainer decided on 2026-11-10 (design v7) that memory across sessions is required before the public v1 launch. Today the code keeps history in server memory only, and the storage layer from #27 in `server/memory/` is unused. Still to build, as designed in design section 6: idle-time fact extraction (#30), retrieval into the late block (#31), and the memory API and panel (#32). Wiring then adds turn rows, the retrieval slot and the idle signal, the crisis exit marks stored turns, and the memory gate (design 10.3) and the extraction load run (10.5) apply. bolt-e4b scored 0.28 precision and 0.10 recall on extraction in the bake-off, so extraction quality needs work first: a tighter prompt, fewer predicates, or fine-tuning.
 
 ## v1.x
 
 Small follow-ups deferred from v1: a Settings panel, Firefox and Safari support, voice "forget that", and encryption at rest for the memory database.
 
 ## v1.1
-
-### Memory (#30, #31, #32)
-
-Memory across sessions, as designed in design section 6: idle-time fact extraction (#30), retrieval into the late block (#31), and the memory API and panel (#32). The storage layer from #27 is already merged and unused in v1. When memory lands, wiring adds turn rows, the retrieval slot and the idle signal, the crisis exit marks stored turns, and the memory gate (design 10.3) and the extraction load run (10.5) apply. bolt-e4b scored 0.28 precision and 0.10 recall on extraction in the bake-off, so extraction quality needs work first: a tighter prompt, fewer predicates, or fine-tuning.
 
 ### NVIDIA support (#6)
 
