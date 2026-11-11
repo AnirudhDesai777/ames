@@ -337,6 +337,8 @@ Threats in scope: web pages open in the user's browser, and other user accounts 
 
 Encryption at rest is v1.x. The README states that v1 relies on macOS file permissions.
 
+Dev-only exception: with `AMES_TRACE=1`, spans sent to a local Langfuse hold turn text (user speech, prompts and replies). It is off by default, needs dev dependencies, and is never a normal run. Langfuse keeps what it receives until the maintainer deletes it there.
+
 ### 9.3 Network policy
 
 - Only `ames setup` uses the network. It downloads models from Hugging Face at pinned revisions and checks each file's SHA-256, and records file sizes.
@@ -344,6 +346,7 @@ Encryption at rest is v1.x. The README states that v1 relies on macOS file permi
 - The server sets `HF_HOME` and `HF_HUB_OFFLINE=1` before importing model libraries, and turns off library telemetry.
 - WebRTC uses an empty `iceServers` list on both client and server, so no STUN server is contacted.
 - The client bundles all assets. No CDNs or remote fonts.
+- Dev-only exception: with `AMES_TRACE=1` the server posts OpenTelemetry spans to a Langfuse on loopback (default `http://localhost:3300`). Startup refuses any other host, so no traffic leaves the machine.
 - S7b runs a full session with outbound network blocked.
 
 ## 10. Evaluation
