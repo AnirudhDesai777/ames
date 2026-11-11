@@ -33,4 +33,5 @@ real speech, install the local models and set `AMES_LLM_MODEL` as described in
 
 See [server/README.md](server/README.md) and [web/README.md](web/README.md) for
 the local interfaces. CI runs these checks on Ubuntu with `AMES_STUB=1`
-without models or hardware. The v1 plan remains in [docs/design.md](docs/design.md).
+without models or hardware. The v1 plan remains in [docs/design.md](docs/design.md), and the C4
+architecture diagrams are in [docs/architecture/](docs/architecture/README.md).
