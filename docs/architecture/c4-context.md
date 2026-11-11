@@ -27,4 +27,4 @@ flowchart TB
 Notes:
 
 - The dashed arrow and Hugging Face box are planned: `ames setup` (#35) is not built yet, and today the models are placed by hand (see `server/README.md`). Once built, it is the only network use. After the models are on disk the server sets `HF_HUB_OFFLINE=1` and makes no network calls, and WebRTC uses an empty `iceServers` list.
-- Memory across sessions (SQLite, design section 6) is planned for v1.1 and is not part of the v1 context diagram. v1 keeps history in server memory for the session only.
+- Memory across sessions (SQLite, design section 6) is planned for v1 and not built yet, so it is not in this diagram. Until it is built, history stays in server memory for the session only.

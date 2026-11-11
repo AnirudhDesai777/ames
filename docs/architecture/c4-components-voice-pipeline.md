@@ -62,4 +62,4 @@ Notes:
 - `crisis=1` replies currently produce no TTS text. The full crisis exit is slice S6 and is not drawn.
 - Notices come from the session lifecycle (`server/live.py` pipeline error handler, `server/app.py` session close and replace), not from a pipeline stage.
 - The initial neutral state and the first `speaking: none` event are sent by the HTTP app when it accepts the offer (`server/app.py`), before the pipeline runs.
-- The memory retrieval slot in prompt assembly exists in code but receives an empty late block in v1.
+- The memory retrieval slot in prompt assembly exists in code but receives an empty late block until memory is built.

@@ -25,7 +25,7 @@ flowchart TB
     end
 
     files[("<b>Local files</b><br/>[macOS filesystem, ~/Library/Application Support/Ames]<br/>models/ directory, token file mode 0600")]
-    mem[("<b>Memory store, planned for v1.1</b><br/>[SQLite, ames.db]<br/>Not used in v1")]
+    mem[("<b>Memory store, planned for v1, not built yet</b><br/>[SQLite, ames.db]<br/>Nothing opens it yet")]
 
     user -->|"Speaks and listens"| web
     web -->|"Reads and writes<br/>[Web Storage API]"| ls
@@ -42,7 +42,7 @@ flowchart TB
     stt -->|"Loads weights<br/>[file read]"| files
     llm -->|"Loads weights<br/>[file read, path from AMES_LLM_MODEL]"| files
     tts -->|"Loads weights<br/>[file read]"| files
-    pipeline -.->|"v1.1: facts and turns<br/>[sqlite3]"| mem
+    pipeline -.->|"Planned: facts and turns<br/>[sqlite3]"| mem
 
     classDef person fill:#08427b,stroke:#052e56,color:#ffffff
     classDef cont fill:#438dd5,stroke:#2e6295,color:#ffffff
@@ -54,6 +54,6 @@ flowchart TB
 
 Notes:
 
-- The memory store is drawn dashed and white because it is planned for v1.1. The schema and repository exist in `server/memory/` but nothing in v1 opens them.
+- The memory store is drawn dashed and white because it is planned for v1 and not built yet. The schema and repository exist in `server/memory/` but nothing opens them.
 - The token file is written by the server when it starts. Chrome gets the token in the URL fragment, which never reaches the server.
 - Conversation text is never written to disk in v1.

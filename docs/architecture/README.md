@@ -8,7 +8,7 @@ C4 diagrams of Ames v1, drawn as Mermaid flowcharts that GitHub renders. They fo
 | 2 | [Containers](c4-containers.md) | Web client, the single server process, in-process models, local files |
 | 3 | [Voice pipeline](c4-components-voice-pipeline.md) | The live audio path from mic to speaker, with session events |
 
-Memory across sessions (SQLite, design section 6) is deferred to v1.1. The container diagram shows it dashed as planned, and the other diagrams leave it out. v1 keeps history in server memory for the session only.
+Memory across sessions (SQLite, design section 6) is planned for v1 and not built yet. The container diagram shows it dashed as planned, and the other diagrams leave it out. Until it is built, history stays in server memory for the session only.
 
 Where the design doc and the code differ, the diagrams show what the code does:
 
