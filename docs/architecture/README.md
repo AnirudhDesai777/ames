@@ -4,7 +4,7 @@ C4 diagrams of Ames v1, drawn as Mermaid flowcharts that GitHub renders. They fo
 
 | Level | Diagram | Shows |
 |---|---|---|
-| 1 | [Context](c4-context.md) | The user, Ames, and the one external system (Hugging Face, download only) |
+| 1 | [Context](c4-context.md) | The user, Ames, and the one external system (Hugging Face, planned download via `ames setup`) |
 | 2 | [Containers](c4-containers.md) | Web client, the single server process, in-process models, local files |
 | 3 | [Voice pipeline](c4-components-voice-pipeline.md) | The live audio path from mic to speaker, with session events |
 

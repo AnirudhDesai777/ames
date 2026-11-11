@@ -38,12 +38,15 @@ flowchart LR
     rec -->|"Adds played sentences"| hist
     prompt -->|"user transcript, speaking"| events
     san -->|"mood state"| events
+    san -.->|"Sets mood for the next sentences<br/>[attribute set]"| tts
+    life["<b>Session lifecycle</b><br/>[Session, on_pipeline_error]<br/>Pipeline errors, session replaced or ended"]
+    life -->|"notice"| events
     rec -->|"ames transcript, speaking"| events
     events -->|"[RTVI over WebRTC data channel]"| browser
 
     classDef comp fill:#85bbf0,stroke:#5d82a8,color:#000000
     classDef ext fill:#438dd5,stroke:#2e6295,color:#ffffff
-    class tin,vad,stt,prompt,llm,san,split,tts,tout,rec,events comp
+    class tin,vad,stt,prompt,llm,san,split,tts,tout,rec,events,life comp
     class browser,hist ext
 ```
 
@@ -53,4 +56,6 @@ Notes:
 - History gets only sentences whose audio the transport has sent. A cut sentence and queued sentences are dropped on interruption.
 - On interruption (`InterruptionFrame`) the LLM generation is cancelled and queued TTS is dropped.
 - `crisis=1` replies currently produce no TTS text. The full crisis exit is slice S6 and is not drawn.
+- Notices come from the session lifecycle (`server/live.py` pipeline error handler, `server/app.py` session close and replace), not from a pipeline stage.
+- The initial neutral state and the first `speaking: none` event are sent by the HTTP app when it accepts the offer (`server/app.py`), before the pipeline runs.
 - The memory retrieval slot in prompt assembly exists in code but receives an empty late block in v1.

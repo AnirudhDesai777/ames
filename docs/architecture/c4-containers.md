@@ -8,7 +8,7 @@ flowchart TB
 
     subgraph chrome["Chrome on the user's Mac"]
         web["<b>Web client</b><br/>[Container: TypeScript, Vite, bundled assets]<br/>Orb, transcript, mute, end, advisory, notices"]
-        ls[("<b>Browser storage</b><br/>[localStorage, sessionStorage]<br/>Advisory seen flag, per-install token")]
+        ls[("<b>Browser storage</b><br/>[localStorage, sessionStorage]<br/>Advisory seen flag (localStorage). Session token for this tab, rotated each server launch (sessionStorage)")]
     end
 
     subgraph server["Ames server: one Python process on 127.0.0.1:8765"]
@@ -17,7 +17,7 @@ flowchart TB
         stt["<b>Parakeet TDT 0.6B v2</b><br/>[Container: MLX in-process]<br/>Speech to text"]
         llm["<b>LLM service</b><br/>[Container: mlx-lm in-process, model from AMES_LLM_MODEL]<br/>Reply generation, one conversation prompt cache"]
         tts["<b>Qwen3-TTS 1.7B CustomVoice 8bit</b><br/>[Container: MLX in-process]<br/>Text to speech, voice Ryan"]
-        hist[("<b>Session history</b><br/>[In-process Python list]<br/>Spoken text only, cleared when the session ends")]
+        hist[("<b>Session history</b><br/>[In-process Python list]<br/>User transcripts and Ames sentences already sent. Cleared when the session ends")]
     end
 
     files[("<b>Local files</b><br/>[macOS filesystem, ~/Library/Application Support/Ames]<br/>models/ directory, token file mode 0600")]
@@ -36,7 +36,7 @@ flowchart TB
     pipeline -->|"Reads and appends turns<br/>[Python call]"| hist
     http -->|"Writes token at startup<br/>[file write]"| files
     stt -->|"Loads weights<br/>[file read]"| files
-    llm -->|"Loads weights<br/>[file read]"| files
+    llm -->|"Loads weights<br/>[file read, path from AMES_LLM_MODEL]"| files
     tts -->|"Loads weights<br/>[file read]"| files
     pipeline -.->|"v1.1: facts and turns<br/>[sqlite3]"| mem
 
