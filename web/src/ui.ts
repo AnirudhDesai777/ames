@@ -1,4 +1,4 @@
-import type { Mood, Session, SessionEvent, Speaker, startSession } from "./rtc";
+import type { Session, SessionEvent, Speaker, startSession } from "./rtc";
 
 export function mountConversation(
   document: Document,
@@ -21,7 +21,6 @@ export function mountConversation(
   const notice = find("notice");
   const orb = find("orb");
   const presence = find("presence");
-  const moodLabel = find("mood");
   const transcript = find("transcript");
   const empty = find("transcript-empty");
   const turns = new Map<string, { row: HTMLLIElement; text: HTMLParagraphElement; final: boolean }>();
@@ -31,18 +30,14 @@ export function mountConversation(
   let muted = false;
   let session: Session | undefined;
   let attempt = 0;
-  let mood: Mood = "neutral";
   let who: Speaker = "none";
-  let moodTurn = -1;
 
   // A function, so TypeScript does not narrow `phase` across an await it cannot see through.
   const stale = (current: number) => current !== attempt || phase === "idle";
   const renderOrb = () => {
-    orb.dataset.mood = mood;
     orb.dataset.speaking = who;
     presence.textContent = who === "ames" ? "Ames is speaking" : who === "user" ? "You're speaking" : phase === "connected" ? "Listening" : phase === "connecting" ? "Connecting" : "Ready to talk";
-    moodLabel.textContent = mood;
-    orb.setAttribute("aria-label", `${presence.textContent}. Mood: ${mood}.`);
+    orb.setAttribute("aria-label", presence.textContent);
   };
   const finish = (text: string, button = "Start conversation") => {
     const wasRunning = phase !== "idle";
@@ -59,7 +54,6 @@ export function mountConversation(
     if (wasRunning) start.focus();
     status.textContent = text;
     who = "none";
-    mood = "neutral";
     renderOrb();
   };
   const showNotice = (text: string, code: string) => {
@@ -71,12 +65,6 @@ export function mountConversation(
     switch (event.type) {
       case "speaking":
         who = event.who;
-        renderOrb();
-        break;
-      case "state":
-        if (event.turn_id < moodTurn) break;
-        moodTurn = event.turn_id;
-        mood = event.mood;
         renderOrb();
         break;
       case "transcript": {
@@ -128,7 +116,6 @@ export function mountConversation(
     transcript.replaceChildren();
     turns.clear();
     empty.hidden = false;
-    moodTurn = -1;
     start.disabled = true;
     end.disabled = false;
     end.focus();

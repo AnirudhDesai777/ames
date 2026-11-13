@@ -26,7 +26,7 @@ string or offer body. `peerConfiguration()` supplies an empty `iceServers` list.
 Stub mode replies with tone audio through the live pipeline. Audio playback
 contains native controls if Chrome blocks autoplay.
 
-The orb reflects `speaking` and all six `state.mood` values, with text labels and
+The orb reflects `speaking`, with a text label and
 reduced-motion support. The live transcript updates each role and turn in place
 until its final event. Transcript and notice content is rendered as plain text.
 The transcript stays after End session and clears when a new conversation starts.

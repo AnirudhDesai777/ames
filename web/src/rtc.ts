@@ -1,9 +1,7 @@
-export type Mood = "neutral" | "amused" | "excited" | "soft" | "annoyed" | "concerned";
 export type Speaker = "user" | "ames" | "none";
 export type SessionEvent =
   | { type: "transcript"; role: "user" | "ames"; text: string; final: boolean; turn_id: number }
   | { type: "speaking"; who: Speaker }
-  | { type: "state"; mood: Mood; turn_id: number }
   | { type: "notice"; code: "session_replaced" | "session_ended" | "server_error"; text: string };
 
 export type Session = { ready: Promise<void>; close: () => void; setMuted: (muted: boolean) => void };
@@ -25,8 +23,6 @@ function serverEvent(raw: unknown): SessionEvent | null {
       return turn && ["user", "ames"].includes(data.role) && typeof data.text === "string" && typeof data.final === "boolean" ? data : null;
     case "speaking":
       return ["user", "ames", "none"].includes(data.who) ? data : null;
-    case "state":
-      return turn && ["neutral", "amused", "excited", "soft", "annoyed", "concerned"].includes(data.mood) ? data : null;
     case "notice":
       return ["session_replaced", "session_ended", "server_error"].includes(data.code) && typeof data.text === "string" ? data : null;
     default:
