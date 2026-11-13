@@ -135,7 +135,7 @@ Streaming state uses Pipecat RTVI server messages over the WebRTC data channel:
 { "type": "notice",     "code": "session_replaced" | "session_ended" | "server_error", "text": str }
 ```
 
-There is no `state` event and no mood field: the UI has nothing to colour or label. The crisis flag never reaches the client; the client learns of a crisis exit only through `notice: session_ended` (8.4). The code still has the `state` event with a `Mood` until the follow-up work lands.
+There is no `state` event and no mood field: the UI has nothing to colour or label. The crisis flag never reaches the client; the client learns of a crisis exit only through `notice: session_ended` (8.4).
 
 HTTP endpoints on `http://127.0.0.1:8765`. Every endpoint checks `Host` (9.1). Every endpoint except `GET /` also requires the header `X-Ames-Token`.
 
@@ -283,7 +283,7 @@ Every reply starts with a control token, which the server strips before any text
 - Tags never appear in the visible transcript.
 - One calm, natural voice. TTS gets no per-reply instruction and no style text. She does not laugh: the character prompt (8.1) tells the model not to write laughter or reactions, and the sanitizer removes laughter written as an action. Laughter written as plain words, such as "haha", is not caught by the sanitizer; the persona eval (10.1) checks for it.
 
-v7 had six moods, a per-mood TTS instruction table, and a mood field in the control token; all of that is removed. The code still has moods until the follow-up work lands: the parser requires `mood=`, the TTS service looks up a mood instruction, and the client colours the orb by mood.
+v7 had six moods, a per-mood TTS instruction table, and a mood field in the control token; all of that is removed.
 
 ## 8. Persona and safety
 
