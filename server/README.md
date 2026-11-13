@@ -51,9 +51,9 @@ never written to disk, no memory repository is opened, and the late block is
 empty. The prompt maps the UI's `ames` role to `assistant` and retains at most
 3000 history content tokens. Retrieval and extraction are planned for v1 and are not built yet.
 
-`server.events.Events` wraps transcript, speaking, state, and notice payloads
-from design 5.4 in Pipecat RTVI `server-message` envelopes. Initial neutral state
-and no-speaker events queue until the data channel opens. User transcripts are
+`server.events.Events` wraps transcript, speaking, and notice payloads
+from design 5.4 in Pipecat RTVI `server-message` envelopes. The initial
+no-speaker event queues until the data channel opens. User transcripts are
 final once; Ames transcripts grow as sentences complete, then become final
 once at reply completion or interruption. A pipeline error ends the session
 with a notice that remains visible after disconnect. A temporary WebRTC
@@ -166,8 +166,8 @@ Minimum: Apple Silicon with 24 GB RAM and a TTS startup real-time factor at
 most 0.9 (reference: M4 Pro, 24 GB). There is no fallback voice.
 
 `server.tts.QwenTTSService` uses mlx-audio 0.6.1, voice Ryan, English, and
-streaming with a 0.1 s interval. It emits mono PCM16 at 24 kHz. Emotion uses the
-six mood instructions from design section 7; neutral supplies no instruction.
+streaming with a 0.1 s interval. It emits mono PCM16 at 24 kHz. Every reply uses
+the same voice, with no style instruction.
 The sanitizer runs before sentence splitting and strips every recognized inline
 tag. Synthesis begins as soon as the splitter emits the first complete sentence.
 
@@ -208,8 +208,7 @@ Manual checks on the reference Mac:
   must stop outgoing audio within 150 ms of the interruption decision.
 - Interrupt part-way through a sentence and inspect the next prompt: only whole
   sentences that completed playback may remain in her history.
-- Check the real startup gate and listen to all six moods. Instruction rendering
-  was not rated in the bake-off.
+- Check the real startup gate and listen for one steady voice.
 
 ## Conversation prompt assembly
 
@@ -301,9 +300,9 @@ reply with a fresh `ParserState()`, pass the returned `state` into the next call
 and finish with `parse_chunk(state, "", final=True)`. Discard the state when a
 reply ends or is interrupted. No state is shared between replies.
 
-The initial `<state mood=... crisis=...>` sets `state.mood` and `state.crisis`
+The initial `<state crisis=N>` sets `state.crisis`
 without reaching either output. Before it is recognized, only prefixes of a
-valid control token wait across chunks. Missing or malformed control tokens default to neutral and 0, then follow the body rules.
+valid control token wait across chunks. Missing or malformed control tokens default to crisis 0, then follow the body rules.
 `error_code` reports `control_token_missing` or `control_token_malformed` once
 per reply. The caller must log only this code, never text or parser state.
 

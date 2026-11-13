@@ -16,14 +16,14 @@ flowchart TB
         stt["<b>STT</b><br/>[ParakeetSTTService, MLX]<br/>Transcribes each VAD segment"]
         prompt["<b>Prompt assembly</b><br/>[SessionPrompt, PromptAssembler]<br/>Persona, last 3000 history tokens, new user turn"]
         llm["<b>LLM</b><br/>[LocalLLMService, mlx-lm]<br/>Streams tokens, cancelled on interruption"]
-        san["<b>Control-token sanitizer</b><br/>[ReplySanitizer, parse_chunk]<br/>Strips state token and inline tags, reads mood"]
+        san["<b>Control-token sanitizer</b><br/>[ReplySanitizer, parse_chunk]<br/>Strips state token and inline tags, reads the crisis flag"]
         split["<b>Sentence splitter</b><br/>[SentenceSplitter, SimpleTextAggregator]<br/>Emits complete sentences"]
-        tts["<b>TTS</b><br/>[QwenTTSService, MLX]<br/>Per-mood instruction, 24 kHz PCM, streaming"]
+        tts["<b>TTS</b><br/>[QwenTTSService, MLX]<br/>One fixed voice, 24 kHz PCM, streaming"]
         tout["<b>Transport output</b><br/>[SmallWebRTCTransport]<br/>Sends Ames audio"]
         rec["<b>Session output</b><br/>[SessionOutput]<br/>Records sentences after they are sent, speaking events"]
     end
 
-    events["<b>Session events</b><br/>[Events, RTVI server messages]<br/>transcript, speaking, state, notice"]
+    events["<b>Session events</b><br/>[Events, RTVI server messages]<br/>transcript, speaking, notice"]
     hist[("<b>Session history</b><br/>[In-process list]")]
 
     browser -->|"Mic audio<br/>[WebRTC]"| tin
@@ -41,8 +41,6 @@ flowchart TB
     prompt -->|"Reads turns, adds user turn"| hist
     rec -->|"Adds played sentences"| hist
     prompt -->|"user transcript, speaking"| events
-    san -->|"mood state"| events
-    san -.->|"Sets mood for the next sentences<br/>[attribute set]"| tts
     life["<b>Session lifecycle</b><br/>[Session, on_pipeline_error]<br/>Pipeline errors, session replaced or ended"]
     life -->|"notice"| events
     rec -->|"ames transcript, speaking"| events
@@ -59,7 +57,8 @@ Notes:
 - A reply is split into sentences before TTS, so speech starts at the first complete sentence while the LLM keeps generating.
 - History gets only sentences whose audio the transport has sent. A cut sentence and queued sentences are dropped on interruption.
 - On interruption (`InterruptionFrame`) the LLM generation is cancelled and queued TTS is dropped.
+- The `speaking` event is derived once in `Conversation` from two flags (user speaking, Ames speaking), so a late bot stop during barge-in cannot hide the user.
 - `crisis=1` replies currently produce no TTS text. The full crisis exit is slice S6 and is not drawn.
 - Notices come from the session lifecycle (`server/live.py` pipeline error handler, `server/app.py` session close and replace), not from a pipeline stage.
-- The initial neutral state and the first `speaking: none` event are sent by the HTTP app when it accepts the offer (`server/app.py`), before the pipeline runs.
+- The first `speaking: none` event is sent by the HTTP app when it accepts the offer (`server/app.py`), before the pipeline runs.
 - The memory retrieval slot in prompt assembly exists in code but receives an empty late block until memory is built.
