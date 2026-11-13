@@ -17,8 +17,5 @@ class Events:
     def speaking(self, who: str):
         self.send(dict(type="speaking", who=who))
 
-    def state(self, mood: str, turn_id: int):
-        self.send(dict(type="state", mood=mood, turn_id=turn_id))
-
     def notice(self, code: str, text: str):
         self.send(dict(type="notice", code=code, text=text))

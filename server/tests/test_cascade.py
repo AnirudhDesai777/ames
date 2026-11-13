@@ -29,7 +29,7 @@ async def test_transcript_runs_plain_prompt_through_streaming_sentence_tts():
             [
                 PlainPrompt(),
                 LocalLLMService(model),
-                cascade.ReplySanitizer(tts),
+                cascade.ReplySanitizer(),
                 SentenceSplitter(),
                 tts,
             ]

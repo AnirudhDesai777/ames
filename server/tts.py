@@ -26,14 +26,6 @@ MINIMUM = (
     "Apple Silicon with 24 GB RAM and a TTS startup real-time factor at most 0.9 "
     "(reference: M4 Pro, 24 GB). See server/README.md."
 )
-MOOD_INSTRUCTIONS = {
-    "neutral": None,
-    "amused": "Speak with a teasing, sarcastic tone.",
-    "excited": "Speak excitedly, with bright energy.",
-    "soft": "Speak softly and gently.",
-    "annoyed": "Speak in an irritated tone.",
-    "concerned": "Speak with gentle concern.",
-}
 SELF_TEST_TEXT = "Hey, I'm Ames. Tell me what's on your mind today."
 
 
@@ -49,7 +41,6 @@ class QwenTTSService(TTSService):
         )
         self.model_path = model_path
         self.model = None
-        self.mood = "neutral"
         self.cancelled = None
         self.ready = False
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ames-tts")
@@ -74,11 +65,8 @@ class QwenTTSService(TTSService):
             mx.eval(self.model.parameters())
             mx.synchronize()
 
-    def chunks(self, text, mood, cancelled):
+    def chunks(self, text, cancelled):
         options = dict(voice="Ryan", lang_code="english", stream=True, streaming_interval=0.1)
-        instruction = MOOD_INSTRUCTIONS.get(mood)
-        if instruction:
-            options["instruct"] = instruction
         with MLX_LOCK:
             stream = self.model.generate(text=text, **options)
         try:
@@ -107,12 +95,10 @@ class QwenTTSService(TTSService):
     def self_test(self):
         self.load_model()
         # Warm kernels before measuring steady-state synthesis, as in the bake-off.
-        for chunk in self.chunks(SELF_TEST_TEXT, "neutral", Event()):
+        for chunk in self.chunks(SELF_TEST_TEXT, Event()):
             pass
         started = perf_counter()
-        duration = sum(
-            len(pcm) / (2 * rate) for pcm, rate in self.chunks(SELF_TEST_TEXT, "neutral", Event())
-        )
+        duration = sum(len(pcm) / (2 * rate) for pcm, rate in self.chunks(SELF_TEST_TEXT, Event()))
         elapsed = perf_counter() - started
         factor = elapsed / duration if duration else math.inf
         if not math.isfinite(factor) or factor > 0.9:
@@ -138,7 +124,6 @@ class QwenTTSService(TTSService):
         queue = asyncio.Queue()
         cancelled = Event()
         self.cancelled = cancelled
-        mood = self.mood
 
         def emit(value):
             if not cancelled.is_set():
@@ -146,7 +131,7 @@ class QwenTTSService(TTSService):
 
         def synthesize():
             try:
-                for pcm, rate in self.chunks(text, mood, cancelled):
+                for pcm, rate in self.chunks(text, cancelled):
                     emit((pcm, rate))
             except Exception:
                 emit(ErrorFrame("local_synthesis_failed"))

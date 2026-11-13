@@ -199,8 +199,8 @@ async def test_failed_pipeline_setup_rejects_offer_and_keeps_active_session(
     assert "private" not in "".join(logged) + await response.text()
     connections[1].disconnect.assert_awaited_once()
     connections[0].disconnect.assert_not_awaited()
-    # Only the opening state and speaker events: the live session received no notice.
-    assert connections[0].send_app_message.call_count == 2
+    # Only the opening speaker event: the live session received no notice.
+    assert connections[0].send_app_message.call_count == 1
 
 
 async def test_failed_session_close_disconnects_replacement(client, monkeypatch, caplog):
@@ -244,14 +244,12 @@ def test_rtvi_emitters():
     events = Events(connection)
     events.transcript("user", "stub", True, 0)
     events.speaking("none")
-    events.state("neutral", 0)
     events.notice("server_error", "stub")
     assert [call.args[0] for call in connection.send_app_message.call_args_list] == [
         {"label": "rtvi-ai", "type": "server-message", "data": data}
         for data in [
             {"type": "transcript", "role": "user", "text": "stub", "final": True, "turn_id": 0},
             {"type": "speaking", "who": "none"},
-            {"type": "state", "mood": "neutral", "turn_id": 0},
             {"type": "notice", "code": "server_error", "text": "stub"},
         ]
     ]
@@ -298,11 +296,8 @@ async def test_real_offer_rtvi_and_session_replaced(client, monkeypatch):
 
     try:
         first = await connect()
-        received = [await asyncio.wait_for(messages.get(), 10) for count in range(2)]
-        assert {message["data"]["type"] for message in received} == {
-            "state",
-            "speaking",
-        }
+        received = [await asyncio.wait_for(messages.get(), 10)]
+        assert {message["data"]["type"] for message in received} == {"speaking"}
         assert all(
             message["label"] == "rtvi-ai" and message["type"] == "server-message"
             for message in received
