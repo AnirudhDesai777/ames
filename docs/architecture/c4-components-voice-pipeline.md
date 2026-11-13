@@ -18,7 +18,7 @@ flowchart TB
         llm["<b>LLM</b><br/>[LocalLLMService, mlx-lm]<br/>Streams tokens, cancelled on interruption"]
         san["<b>Control-token sanitizer</b><br/>[ReplySanitizer, parse_chunk]<br/>Strips state token and inline tags, reads the crisis flag"]
         split["<b>Sentence splitter</b><br/>[SentenceSplitter, SimpleTextAggregator]<br/>Emits complete sentences"]
-        tts["<b>TTS</b><br/>[QwenTTSService, MLX]<br/>One fixed voice, 24 kHz PCM, streaming"]
+        tts["<b>TTS</b><br/>[PocketTTSService, MLX]<br/>Female or male voice per session, 24 kHz PCM, streaming"]
         tout["<b>Transport output</b><br/>[SmallWebRTCTransport]<br/>Sends Ames audio"]
         rec["<b>Session output</b><br/>[SessionOutput]<br/>Records sentences after they are sent, speaking events"]
     end

@@ -21,7 +21,7 @@ flowchart TB
         pipeline["<b>Voice pipeline</b><br/>[Container: Pipecat, SmallWebRTC]<br/>VAD, turn start, STT, prompt, LLM, sanitizer, sentence split, TTS. See component diagram"]
         stt["<b>Parakeet TDT 0.6B v2</b><br/>[Container: MLX in-process]<br/>Speech to text"]
         llm["<b>LLM service</b><br/>[Container: mlx-lm in-process, model from AMES_LLM_MODEL]<br/>Reply generation, one conversation prompt cache"]
-        tts["<b>Qwen3-TTS 1.7B CustomVoice 8bit</b><br/>[Container: MLX in-process]<br/>Text to speech, voice Ryan"]
+        tts["<b>Pocket TTS 100M</b><br/>[Container: MLX in-process]<br/>Text to speech, female or male voice"]
         hist[("<b>Session history</b><br/>[In-process Python list]<br/>User transcripts and Ames sentences already sent. Cleared when the session ends")]
     end
 
