@@ -166,7 +166,11 @@ h1 {
 #connect:hover:enabled {
 	background: #405c4b;
 }
-#mute[aria-pressed="true"] {
+#voice {
+	margin-top: 10px;
+}
+#mute[aria-pressed="true"],
+#voice button[aria-pressed="true"] {
 	background: #e3d5c4;
 }
 #end {

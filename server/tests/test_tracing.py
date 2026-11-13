@@ -25,12 +25,12 @@ def test_flag_off_imports_no_tracing_module():
 def test_flag_off_leaves_services_and_pipeline_untraced(monkeypatch):
     from server.cascade import LocalLLMService
     from server.stt import ParakeetSTTService
-    from server.tts import QwenTTSService
+    from server.tts import PocketTTSService
 
     for method in (
         LocalLLMService.respond,
         ParakeetSTTService.run_stt,
-        QwenTTSService.run_tts,
+        PocketTTSService.run_tts,
     ):
         assert not hasattr(method, "__wrapped__")
     monkeypatch.delenv("AMES_TRACE", raising=False)
@@ -86,10 +86,10 @@ session = exporter._client._transport._session
 settings = session.merge_environment_settings(exporter._endpoint, {}, None, None, None)
 assert settings["proxies"] == {}, settings["proxies"]
 from server.stt import ParakeetSTTService
-from server.tts import QwenTTSService
+from server.tts import PocketTTSService
 from server.cascade import LocalLLMService
 assert hasattr(LocalLLMService.respond, "__wrapped__")
-assert hasattr(QwenTTSService.run_tts, "__wrapped__")
+assert hasattr(PocketTTSService.run_tts, "__wrapped__")
 assert ParakeetSTTService.push_frame.__stt_tracing_push_frame_wrapped__
 """
 

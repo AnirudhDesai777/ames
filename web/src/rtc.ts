@@ -4,7 +4,13 @@ export type SessionEvent =
   | { type: "speaking"; who: Speaker }
   | { type: "notice"; code: "session_replaced" | "session_ended" | "server_error"; text: string };
 
-export type Session = { ready: Promise<void>; close: () => void; setMuted: (muted: boolean) => void };
+export type Voice = "female" | "male";
+export type Session = {
+  ready: Promise<void>;
+  close: () => void;
+  setMuted: (muted: boolean) => void;
+  setVoice: (voice: Voice) => void;
+};
 
 export function peerConfiguration(): RTCConfiguration {
   return { iceServers: [] };
@@ -135,5 +141,6 @@ export function startSession(
   return {
     ready: connect(), close,
     setMuted: (muted) => { stream?.getAudioTracks().forEach((track) => { track.enabled = !muted; }); },
+    setVoice: (voice) => { if (!closed && channel.readyState === "open") channel.send(JSON.stringify({ type: "set_voice", voice })); },
   };
 }

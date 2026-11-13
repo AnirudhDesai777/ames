@@ -15,7 +15,7 @@ function setup({ token = "test-token", seen = true, storage, browser, pending = 
     let resolve;
     let reject;
     const ready = new Promise((yes, no) => { resolve = yes; reject = no; });
-    const session = { ready, close: test.mock.fn(), setMuted: test.mock.fn(), receive, disconnected, resolve, reject, credential, audio };
+    const session = { ready, close: test.mock.fn(), setMuted: test.mock.fn(), setVoice: test.mock.fn(), receive, disconnected, resolve, reject, credential, audio };
     sessions.push(session);
     if (error) reject(error);
     else if (!pending) resolve();
@@ -284,4 +284,33 @@ test("connection loss keeps a preceding server error visible and makes no memory
   ui.sessions[1].disconnected();
   assert.equal(ui.element("notice").hidden, false);
   assert.equal(ui.element("notice").textContent, "Connection lost. Reconnect to start a new session.");
+});
+
+const voiceButton = (ui, voice) => ui.document.querySelector(`#voice [data-voice="${voice}"]`);
+
+test("the voice toggle works before and during a session, is sent on connect and on change, and is remembered", async () => {
+  const ui = setup();
+  assert.equal(voiceButton(ui, "female").getAttribute("aria-pressed"), "true");
+  assert.equal(voiceButton(ui, "female").textContent, "Female voice");
+  assert.equal(voiceButton(ui, "male").textContent, "Male voice");
+  voiceButton(ui, "male").click();
+  assert.equal(voiceButton(ui, "male").getAttribute("aria-pressed"), "true");
+  assert.equal(voiceButton(ui, "female").getAttribute("aria-pressed"), "false");
+  assert.equal(ui.values.get("ames-voice"), "male");
+  ui.click("connect");
+  await tick();
+  assert.deepEqual(ui.sessions[0].setVoice.mock.calls.map((call) => call.arguments), [["male"]]);
+  voiceButton(ui, "female").click();
+  assert.deepEqual(ui.sessions[0].setVoice.mock.calls.at(-1).arguments, ["female"]);
+  assert.equal(ui.values.get("ames-voice"), "female");
+});
+
+test("a saved voice is restored, and unreadable or invalid storage falls back to the female voice", () => {
+  const stored = (value) => ({ getItem: (key) => (key === "ames-voice" ? value : "true"), setItem() {} });
+  assert.equal(voiceButton(setup({ storage: stored("male") }), "male").getAttribute("aria-pressed"), "true");
+  assert.equal(voiceButton(setup({ storage: stored("robot") }), "female").getAttribute("aria-pressed"), "true");
+  const broken = setup({ storage: { getItem() { throw Error("disabled"); }, setItem() { throw Error("disabled"); } } });
+  assert.equal(voiceButton(broken, "female").getAttribute("aria-pressed"), "true");
+  voiceButton(broken, "male").click();
+  assert.equal(voiceButton(broken, "male").getAttribute("aria-pressed"), "true");
 });

@@ -3,7 +3,7 @@
 A private voice thought partner that runs in your browser: talk an idea through and get clear on what you think, with every model on your own machine so nothing leaves it. This is the product described in the design v8 proposal, which the maintainer has not yet confirmed.
 
 Status: live pipeline wired. The authenticated loopback app connects browser
-audio to local Parakeet, the persona prompt, mlx-lm, and Qwen TTS over WebRTC.
+audio to local Parakeet, the persona prompt, mlx-lm, and Pocket TTS over WebRTC, with a female or male voice you pick in the page.
 History stays in server memory for the current session. Memory across sessions and context summarising are planned for v1 and are not built yet; `server/memory/` is unused.
 
 The real-voice minimum is Apple Silicon with 24 GB RAM and a TTS startup

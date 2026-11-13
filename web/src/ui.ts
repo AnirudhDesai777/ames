@@ -1,4 +1,4 @@
-import type { Session, SessionEvent, Speaker, startSession } from "./rtc";
+import type { Session, SessionEvent, Speaker, startSession, Voice } from "./rtc";
 
 export function mountConversation(
   document: Document,
@@ -14,6 +14,7 @@ export function mountConversation(
   const start = find<HTMLButtonElement>("connect");
   const mute = find<HTMLButtonElement>("mute");
   const end = find<HTMLButtonElement>("end");
+  const voices = [...document.querySelectorAll<HTMLButtonElement>("#voice button")];
   const audio = find<HTMLAudioElement>("audio");
   const advisory = find("advisory");
   const acknowledge = find<HTMLButtonElement>("acknowledge");
@@ -26,6 +27,11 @@ export function mountConversation(
   const turns = new Map<string, { row: HTMLLIElement; text: HTMLParagraphElement; final: boolean }>();
   let seen = false;
   try { seen = browser.localStorage.getItem("ames-advisory-seen") === "true"; } catch { /* Site storage may be disabled. */ }
+  let voice: Voice = "female";
+  try {
+    const saved = browser.localStorage.getItem("ames-voice");
+    if (saved === "male" || saved === "female") voice = saved;
+  } catch { /* Site storage may be disabled; the default voice applies. */ }
   let phase: "idle" | "connecting" | "connected" = "idle";
   let muted = false;
   let session: Session | undefined;
@@ -97,6 +103,19 @@ export function mountConversation(
     }
   };
 
+  const renderVoice = () => {
+    for (const button of voices) button.setAttribute("aria-pressed", String(button.dataset.voice === voice));
+  };
+  renderVoice();
+  for (const button of voices) {
+    button.addEventListener("click", () => {
+      voice = button.dataset.voice === "male" ? "male" : "female";
+      try { browser.localStorage.setItem("ames-voice", voice); } catch { /* The choice still applies to this visit. */ }
+      renderVoice();
+      if (phase === "connected") session?.setVoice(voice);
+    });
+  }
+
   advisory.hidden = seen;
   finish(token ? "Ready when you are" : "Open the link from the server to connect.");
   acknowledge.addEventListener("click", () => {
@@ -135,6 +154,7 @@ export function mountConversation(
       await next.ready;
       if (stale(current)) return;
       phase = "connected";
+      next.setVoice(voice);
       status.textContent = "Connected";
       mute.disabled = false;
       renderOrb();

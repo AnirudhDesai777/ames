@@ -27,7 +27,7 @@ rejects other Hosts and foreign Origins, and sends no CORS headers. Requests
 without an Origin are allowed for local clients with the token.
 
 `GET /api/health` reports each local model ID and its loaded flag. Startup loads
-Parakeet, eagerly loads the LLM selected by `AMES_LLM_MODEL`, and prepares Qwen
+Parakeet, eagerly loads the LLM selected by `AMES_LLM_MODEL`, and prepares Pocket TTS
 with its speed gate before accepting connections. Stub mode reports three
 loaded stubs. `POST /api/offer` accepts `{ "type": "offer", "sdp": "..." }` and
 returns an SDP answer, `pc_id`, and a random `session_id`. A valid new offer
@@ -39,7 +39,7 @@ the exception type and its file and line. Failure logs never include exception
 messages, because those can hold user speech.
 
 `server.live` connects WebRTC input to Parakeet, the capped persona prompt,
-mlx-lm, control-token sanitation, sentence splitting, Qwen, and WebRTC output.
+mlx-lm, control-token sanitation, sentence splitting, Pocket TTS, and WebRTC output.
 Models stay loaded across connections; STT and TTS get fresh session processors
 and executors. Prompt assembly and token counting run on the LLM executor,
 which also owns generation and tokenizer access.
@@ -97,7 +97,7 @@ a message. Create the keys in the Langfuse project settings; never commit them.
 
 `server.cascade` uses local Parakeet TDT 0.6B v2 MLX transcription,
 a plain prompt, an in-process mlx-lm service, the control-token sanitizer,
-Pipecat sentence aggregation, and Qwen3-TTS 1.7B CustomVoice 8bit speech.
+Pipecat sentence aggregation, and Pocket TTS 100M speech.
 `AMES_STUB=1` selects model-free transcription, generation, and tone TTS.
 Parakeet loads once at pipeline startup and transcribes VAD segments. Empty
 transcripts produce no frame. Each recorded replay starts with empty history.
@@ -131,8 +131,9 @@ For the manual run on the reference M4 Pro Mac with 24 GB RAM:
 2. Run `uv sync --locked --extra mac`.
 3. Place the complete Parakeet TDT 0.6B v2 MLX model directory at
    `~/Library/Application Support/Ames/models/parakeet-tdt-0.6b-v2/`.
-   Place Qwen3-TTS CustomVoice 8bit at
-   `~/Library/Application Support/Ames/models/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit/`
+   Place the full `mlx-community/pocket-tts` snapshot, including its
+   `embeddings/azelma.safetensors` and `embeddings/marius.safetensors`, at
+   `~/Library/Application Support/Ames/models/pocket-tts/`
    and a complete mlx-lm model directory under the same `models/` directory.
    Use the revisions recorded in `docs/models.md`. This command never downloads
    weights.
@@ -144,7 +145,7 @@ For the manual run on the reference M4 Pro Mac with 24 GB RAM:
    ```
 
 Real mode requires every listed WAV and fails if files are missing or malformed.
-It uses real Qwen TTS after its startup speed gate. No microphone
+It uses real Pocket TTS after its startup speed gate. No microphone
 or browser is needed during replay. Use `--manifest PATH` to replay another
 manifest with the same schema; WAV paths resolve from the repository root.
 
@@ -160,19 +161,28 @@ ends. MLX evaluation is synchronized before the lock is released. Only
 leaves that decision to Pipecat. A ten-second token timeout emits an error. A
 failed or incomplete turn produces no percentile report. No transcript or generated text is printed by the harness.
 
-## Qwen speech and interruption
+## Pocket TTS speech and interruption
 
 Minimum: Apple Silicon with 24 GB RAM and a TTS startup real-time factor at
 most 0.9 (reference: M4 Pro, 24 GB). There is no fallback voice.
 
-`server.tts.QwenTTSService` uses mlx-audio 0.6.1, voice Ryan, English, and
-streaming with a 0.1 s interval. It emits mono PCM16 at 24 kHz. Every reply uses
-the same voice, with no style instruction.
+`server.tts.PocketTTSService` loads `mlx-community/pocket-tts` (revision
+`cbf71d5f6657bbc3f4bc02f85ee408261225bec7`, see `docs/models.md`) with mlx-audio
+0.6.1 and streams with a 0.1 s interval. It emits mono PCM16 at 24 kHz, with no
+style instruction. Voices come from the snapshot's `embeddings/` folder, so
+synthesis never touches the network, and startup fails with an install message
+if `azelma.safetensors` or `marius.safetensors` is missing.
+
+Each session starts with the female voice (`azelma`). The client sends
+`{"type": "set_voice", "voice": "female" | "male"}` over the data channel;
+`male` selects `marius`. Any other value is ignored and logged as
+`set_voice_invalid`. A change applies from the next sentence synthesised and never
+cuts one that is playing; sentences already synthesised keep the old voice.
 The sanitizer runs before sentence splitting and strips every recognized inline
 tag. Synthesis begins as soon as the splitter emits the first complete sentence.
 
 Call `await tts.prepare()` before starting a pipeline or accepting a live
-connection. This loads Qwen, warms one fixed sentence, then measures compute time
+connection. This loads Pocket TTS, warms one fixed sentence, then measures compute time
 divided by generated audio duration for a second synthesis. A factor above 0.9
 or no audio raises `This Mac is too slow for her voice` with the minimum above.
 The latency CLI runs this gate before its worker starts. The service also checks
@@ -316,7 +326,7 @@ preserved without waiting for the reply to end.
 
 Feed `tts_text` into the sentence splitter before TTS. No inline tags are
 allowed. All recognized well-formed tags, including `<laugh>`, `<sigh>`,
-`<bogus>`, `<smile>` and `</laugh>`, are removed from both outputs because Qwen
+`<bogus>`, `<smile>` and `</laugh>`, are removed from both outputs because Pocket TTS
 does not accept inline tags. Asterisks are removed only when
 opening a span (start, whitespace or punctuation before; non-space after) or
 closing one (non-space before; end, whitespace or punctuation after). Words are

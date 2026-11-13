@@ -9,7 +9,7 @@ People want someone to think out loud with: to argue an idea, talk through a dec
 
 Ames is a voice thought partner that runs in the browser and runs every model on the user's own Mac. People talk things through with her and come away clearer about what they think. No audio, text, or memory leaves the machine during a conversation. That privacy is the core promise.
 
-She has one role, thought partner (her character is in 8.1). She has one calm, natural voice. She expresses no moods and does not laugh, because the product is clarity and privacy, not emotional rendering.
+She has one role, thought partner (her character is in 8.1). She has one calm, natural voice, in a female or male version the user picks. She expresses no moods and does not laugh, because the product is clarity and privacy, not emotional rendering.
 
 The pitch, in one paragraph: a cascading voice system that runs on your own hardware, remembers across sessions (section 6), builds context over time, and when a conversation nears the context window limit summarises it and continues (5.5). Searching the web for what she does not know comes after v1, opt-in (section 2).
 
@@ -56,14 +56,14 @@ Decided by the maintainer and not open for review. This table is the copy of rec
 | Content | No topic refusals and no age gate. |
 | Guardrails | Exactly five, listed in 8.3. |
 | Crisis | On a crisis turn she says one fixed line pointing to local emergency services, then the session ends (8.4). No hotline lists or phone numbers. |
-| STT and TTS | STT: Parakeet TDT 0.6B v2 (`mlx-community/parakeet-tdt-0.6b-v2`, revision `8ae1553`). TTS: Qwen3-TTS 1.7B CustomVoice 8bit (`mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit`, revision `41d3337`), voice Ryan, streaming at a 0.1 s interval. Chosen in the [S2b voice bake-off](evals/voice-bakeoff.md). One TTS, no fallback voice; a Mac too slow for it is unsupported. |
+| STT and TTS | STT: Parakeet TDT 0.6B v2 (`mlx-community/parakeet-tdt-0.6b-v2`, revision `8ae1553`). TTS: Pocket TTS 100M (`mlx-community/pocket-tts`, revision `cbf71d5`), streaming at a 0.1 s interval, with a female voice (`azelma`, default) and a male voice (`marius`) the user switches in the web UI. Picked by listening on 2026-11-13 after the [S2b voice bake-off](evals/voice-bakeoff.md) (#112). One TTS, no fallback voice; a Mac too slow for it is unsupported. |
 | Minimum RAM | 24 GB. A smaller LLM leaves more of it for the KV cache. |
 | Advisory | First run shows a notice: Ames is an AI with no cloud monitoring, nobody can guarantee what she says, take it with a grain of salt. |
 | License | Apache-2.0 for the code. Users download base models from their source. Ames publishes only its own fine-tuned adapter from D, under the base model's license. |
 
-Parakeet was chosen over Nemotron for latency headroom: p90 50 ms against the 200 ms budget. Nemotron has lower WER, but the gap is one real recognition error on 30 clips. Qwen had the best listening scores (expressiveness 4.10, naturalness 3.45) and lowest p90 first chunk (63 ms). Under v8 expressiveness and instruction control are no longer requirements, so the choices of LLM and TTS are to be revisited (12).
+Parakeet was chosen over Nemotron for latency headroom: p90 50 ms against the 200 ms budget. Nemotron has lower WER, but the gap is one real recognition error on 30 clips. Qwen3-TTS 1.7B CustomVoice had the best bake-off listening scores (expressiveness 4.10, naturalness 3.45) and the lowest p90 first chunk (63 ms), but the maintainer found its voices slow and tiring in conversation and replaced it with Pocket TTS (#112). Under v8 expressiveness and instruction control are no longer requirements, so the choice of LLM is still to be revisited (12).
 
-Ryan is a male voice while Ames is written as female. v1 ships with Ryan; backlog issue #68 decides a female voice or a rename after v1.
+Ames is written as female, so Pocket TTS defaults to the female voice `azelma`. The web UI offers a male voice (`marius`) too; the choice is per browser, sent over the data channel as `{"type": "set_voice", "voice": "female" | "male"}`, and applies from the next sentence the server synthesises; sentences already synthesised play in the old voice.
 
 ## 4. Hardware
 
@@ -82,15 +82,15 @@ Chrome (web/)                          Python server (server/, one process)
                                          prompt assembly + memory retrieval
                                          in-process mlx-lm service            LLM
                                          control-token parser + tag sanitizer
-                                         Qwen3-TTS 1.7B CustomVoice 8bit (MLX) TTS
+                                         Pocket TTS 100M (MLX) TTS
   speaker <- WebRTC audio <------------- SmallWebRTCTransport
-  UI <- RTVI events (data channel) <---- transcript, speaking, notice
+  UI <-> RTVI events (data channel) <--> transcript, speaking, notice; set_voice from the UI
   UI <-> HTTP 127.0.0.1:8765 <---------> page, offer, health, memory
                                          idle-time memory extraction
                                          idle-time history summarising (5.5)
 ```
 
-Pipecat (pinned in S1) provides the transport, VAD, Smart Turn v3, interruption handling, and RTVI events. Parakeet replaces Whisper MLX STT; Pipecat has no local Parakeet service, so we write the STT service in #70. We also write: the HTTP app, the mlx-lm LLM service, prompt assembly, the control-token parser and tag sanitizer, the Qwen TTS service (Pipecat has no MLX TTS service), memory, history summarising, and the UI.
+Pipecat (pinned in S1) provides the transport, VAD, Smart Turn v3, interruption handling, and RTVI events. Parakeet replaces Whisper MLX STT; Pipecat has no local Parakeet service, so we write the STT service in #70. We also write: the HTTP app, the mlx-lm LLM service, prompt assembly, the control-token parser and tag sanitizer, the Pocket TTS service (Pipecat has no MLX TTS service), memory, history summarising, and the UI.
 
 The LLM service calls `mlx_lm` directly inside the server process. It keeps two prompt caches: one for the conversation and one for extraction, so extraction never evicts the conversation cache. Generation checks a cancel flag between tokens, so a barge-in or user speech stops GPU work within one token.
 
@@ -135,6 +135,14 @@ Streaming state uses Pipecat RTVI server messages over the WebRTC data channel:
 { "type": "notice",     "code": "session_replaced" | "session_ended" | "server_error", "text": str }
 ```
 
+The client sends one message over the same data channel:
+
+```text
+{ "type": "set_voice", "voice": "female" | "male" }
+```
+
+The server maps `female` to `azelma` and `male` to `marius`. Any other value is ignored and logged as `set_voice_invalid` without the value. Messages of any other type are ignored.
+
 There is no `state` event and no mood field: the UI has nothing to colour or label. The crisis flag never reaches the client; the client learns of a crisis exit only through `notice: session_ended` (8.4).
 
 HTTP endpoints on `http://127.0.0.1:8765`. Every endpoint checks `Host` (9.1). Every endpoint except `GET /` also requires the header `X-Ames-Token`.
@@ -150,7 +158,7 @@ HTTP endpoints on `http://127.0.0.1:8765`. Every endpoint checks `Host` (9.1). E
 
 Client-only state:
 
-- Mute stops sending mic audio. End closes the WebRTC connection. Neither calls the server.
+- The Female voice / Male voice choice is kept in `localStorage` and sent to the server as `set_voice` (above) on connect and on change. Mute stops sending mic audio. End closes the WebRTC connection. Neither calls the server.
 - "Advisory seen" is stored in the browser's `localStorage`. Clearing site data shows the advisory again.
 - On `notice: session_ended` the UI keeps the notice text on screen (8.4).
 
@@ -278,7 +286,7 @@ Every reply starts with a control token, which the server strips before any text
 
 - The token carries only the crisis flag, `0` or `1`. There are no moods.
 - If the token is missing or malformed: crisis is treated as `0`. An error code is logged, never the text. The crisis gate (10.2) allows zero malformed tokens.
-- Allowed inline tags: none. The sanitizer strips all inline tags, and the parser removes `*laughs*`-style actions. Qwen does not accept inline tags (the bake-off stripped them before synthesis).
+- Allowed inline tags: none. The sanitizer strips all inline tags, and the parser removes `*laughs*`-style actions. Pocket TTS does not accept inline tags.
 - The parser is streaming-aware: it buffers a partial `<...` across chunks and runs before the sentence splitter.
 - Tags never appear in the visible transcript.
 - One calm, natural voice. TTS gets no per-reply instruction and no style text. She does not laugh: the character prompt (8.1) tells the model not to write laughter or reactions, and the sanitizer removes laughter written as an action. Laughter written as plain words, such as "haha", is not caught by the sanitizer; the persona eval (10.1) checks for it.
@@ -467,7 +475,7 @@ Under v8, 10.1 no longer has a mood gate, so item 1 is the persona pass rate, th
 | Voice framework | Pipecat | LiveKit Agents: built around a hosted media server. Custom: rebuilds VAD, turn-taking, barge-in. |
 | LLM runtime | mlx-lm in-process | mlx-lm's HTTP server as a child: a second local listener to secure, less control over cache and cancel. Ollama: separate app. llama.cpp: the fine-tuning path is MLX. |
 | STT | Parakeet TDT 0.6B v2: p90 50 ms, most latency headroom (S2b) | Nemotron: lower WER, but only one real error separates them on 30 clips. Whisper large-v3-turbo: misses the 200 ms p90 budget. |
-| TTS | Qwen3-TTS 1.7B CustomVoice 8bit, Ryan: best listening score, p90 first chunk 63 ms (S2b) | Orpheus 3B and Ming-3.0-tts 0.5B: miss latency budgets. Chatterbox Turbo and Kokoro: lower listening scores. OmniVoice and Higgs: non-commercial licenses. Fish: too large for 24 GB. Kokoro as fallback: a second voice path to build and test for machines below the minimum. |
+| TTS | Pocket TTS 100M, `azelma` and `marius` (#112): the maintainer chose it by listening over Qwen3-TTS 1.7B (best bake-off score, S2b), Qwen3-TTS 0.6B and Kokoro | Orpheus 3B and Ming-3.0-tts 0.5B: miss latency budgets. Chatterbox Turbo and Kokoro: lower listening scores. OmniVoice and Higgs: non-commercial licenses. Fish: too large for 24 GB. Kokoro as fallback: a second voice path to build and test for machines below the minimum. |
 | Moods and emotional rendering | None; one calm voice | v7's six moods with per-mood TTS instructions: the product no longer renders emotion, so there is nothing to select or instruct. |
 | Crisis detection | Control token from the same reply | Separate classifier: one more model on the critical path. |
 | Crisis response | Fixed line, then end the session | Sticky mode with per-country hotline lists: needs verified numbers per country and keeps the model in a conversation it should not lead. |
@@ -476,9 +484,9 @@ Under v8, 10.1 no longer has a mood gate, so item 1 is the persona pass rate, th
 
 ### Models under v8: to be revisited
 
-v8 does not change the chosen models. It records that the choice is to be revisited, for two reasons.
+v8 recorded that the model choice was to be revisited, for two reasons. The TTS part is resolved.
 
-- TTS. Instruction control was a requirement for the TTS choice, because moods needed per-reply style text. Without moods it is not, which reopens smaller TTS options. Qwen3-TTS 0.6B was reportedly excluded only because it ignores instructions. That reason is not recorded in `docs/evals/voice-bakeoff.md` or issue #21 (its candidate list has only the 1.7B model), and it is unverified by listening. A smaller TTS would also leave more memory and time for the LLM. The listening scores that picked Qwen 1.7B (expressiveness 4.10, naturalness 3.45) rated expressiveness, which v8 no longer needs; naturalness still matters.
+- TTS. Resolved by #112. Without moods, instruction control was no longer a requirement. On 2026-11-13 the maintainer compared Pocket TTS 100M, Qwen3-TTS 0.6B and Kokoro 82M by listening and chose Pocket TTS, which is smaller and faster than Qwen 1.7B and leaves more memory for the LLM.
 - LLM. In `docs/evals/llm-bakeoff.md`, the eight candidates that were not judged failed the crisis recall gate without a judge, with malformed control-token counts of 2.7 to 30 per run on the crisis set and mood accuracy of 0.00 to 0.49 (the set includes the qwen35-9b baseline). A control token with only a crisis flag is simpler to emit, so small models may do better. But the two finalists failed for reasons that moods do not explain. bolt-e4b scored persona pass 0.73 against the 0.85 gate, crisis recall 0.90 against 1.00, memory precision 0.28 and recall 0.10, and mood 0.67 against 0.70. The bake-off should be re-read, and probably re-run on the new prompt, before the choice stands.
 
 ## 13. Build
@@ -552,7 +560,7 @@ Open under v8:
 - Slice D: whether v1 can ship without it, given that the memory gate (10.3) is failed by every bake-off candidate.
 - Persona eval: the `companion` prompts, the "in role" and "right move" rubric wording, and how laughter written as words is detected.
 - Memory (section 6): the `feels` predicate stores a feeling word; whether it stays in a product with no emotional rendering.
-- Models (section 12): whether to re-run the LLM bake-off on the v8 prompt, and whether to run a TTS bake-off that includes smaller models.
+- Models (section 12): whether to re-run the LLM bake-off on the v8 prompt. The TTS choice is settled (#112).
 
 Deferred to named slices: the LLM candidate list (issue #12, before E), extraction fallback (S5b, then D). S2b is done: STT and TTS choices are recorded in section 3, with no allowed inline tags. v8 removes the mood mapping S2b produced.
 

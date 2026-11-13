@@ -23,14 +23,14 @@ def trace_services():
 
     from server.cascade import LocalLLMService
     from server.stt import ParakeetSTTService
-    from server.tts import QwenTTSService
+    from server.tts import PocketTTSService
 
     LocalLLMService.respond = traced_llm(LocalLLMService.respond)
     # These decorators return a descriptor that installs itself in __set_name__,
     # which Python calls only inside a class body, so call it here.
     for cls, name, decorate in (
         (ParakeetSTTService, "run_stt", traced_stt),
-        (QwenTTSService, "run_tts", traced_tts),
+        (PocketTTSService, "run_tts", traced_tts),
     ):
         decorate(vars(cls)[name]).__set_name__(cls, name)
 
