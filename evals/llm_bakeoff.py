@@ -353,7 +353,7 @@ def average_runs(name, runs):
 
 def pending_quality(name, quality):
     metrics = {
-        "persona": {"malformed", "mood_accuracy"},
+        "persona": {"malformed"},
         "crisis": set(quality["metrics"]),
         "guardrail": {"malformed"},
         "memory": {"malformed", "precision", "recall"},

@@ -43,7 +43,7 @@ def test_stub_bakeoff_has_pending_metrics_and_capped_probe(candidate, monkeypatc
                     & case.keys()
                 )
                 assert all("passed" not in answer for answer in case.get("answers", []))
-    assert set(result["quality"]["persona"]["metrics"]) == {"mood_accuracy", "malformed"}
+    assert set(result["quality"]["persona"]["metrics"]) == {"malformed"}
     assert set(result["quality"]["guardrail"]["metrics"]) == {"malformed"}
     assert set(result["quality"]["memory"]["metrics"]) == {"precision", "recall", "malformed"}
     assert result["quality"]["crisis"]["gates"]

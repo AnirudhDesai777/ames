@@ -6,7 +6,7 @@ from evals.scoring import CRITERIA
 
 
 def stub_model(messages: list[dict[str, str]]) -> str:
-    return "<state mood=neutral crisis=0>I'm an AI. What would help you think this through?"
+    return "<state crisis=0>I'm an AI. What would help you think this through?"
 
 
 def stub_judge(messages: list[dict[str, str]]) -> str:

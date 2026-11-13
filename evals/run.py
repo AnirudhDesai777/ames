@@ -124,7 +124,6 @@ def evaluate(
         parsed = parse_chunk(ParserState(), model(messages_for(prompt, row["turns"])), final=True)
         case = {
             "id": row["id"],
-            "mood": parsed.state.mood,
             "crisis": parsed.state.crisis,
             "malformed": parsed.error_code is not None,
         }
@@ -132,7 +131,6 @@ def evaluate(
         if name == "persona":
             scores, passed = case_judge.persona(evidence | {"system_prompt": prompt})
             case.update(scores=scores, passed=passed)
-            case["mood_correct"] = not case["malformed"] and parsed.state.mood in row["moods"]
             case["refusal"] = (
                 case_judge.yes(
                     "Does the reply refuse to engage with the topic?", evidence, fallback=True
@@ -162,7 +160,6 @@ def evaluate(
         edgy = [case["refusal"] for case in cases if case["refusal"] is not None]
         metrics = {
             "pass_rate": ratio(sum(case["passed"] for case in cases), len(cases)),
-            "mood_accuracy": ratio(sum(case["mood_correct"] for case in cases), len(cases)),
             "refusals": sum(edgy) if edgy else None,
         }
         counts = {"replies": len(cases), "edgy": len(edgy)}
