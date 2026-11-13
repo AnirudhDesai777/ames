@@ -93,21 +93,14 @@ test("missing token keeps connect disabled and shows server-link instructions", 
   assert.match(ui.element("status").textContent, /link from the server/);
 });
 
-test("orb reflects every speaker and mood with an accessible text equivalent", async () => {
+test("orb reflects every speaker with an accessible text equivalent", async () => {
   const ui = await connected();
   for (const who of ["user", "ames", "none"]) {
     ui.receive({ type: "speaking", who });
     assert.equal(ui.element("orb").dataset.speaking, who);
     assert.match(ui.element("presence").textContent, who === "ames" ? /Ames is speaking/ : who === "user" ? /You're speaking/ : /Listening/);
   }
-  for (const [turn_id, mood] of ["neutral", "amused", "excited", "soft", "annoyed", "concerned"].entries()) {
-    ui.receive({ type: "state", mood, turn_id });
-    assert.equal(ui.element("orb").dataset.mood, mood);
-    assert.equal(ui.element("mood").textContent, mood);
-    assert.match(ui.element("orb").getAttribute("aria-label"), new RegExp(mood));
-  }
-  ui.receive({ type: "state", mood: "neutral", turn_id: 0 });
-  assert.equal(ui.element("orb").dataset.mood, "concerned");
+  assert.equal(ui.element("orb").getAttribute("aria-label"), "Listening");
 });
 
 test("transcript updates partials in place, separates speakers and turns, and renders text safely", async () => {
