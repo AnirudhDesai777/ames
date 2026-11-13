@@ -16,7 +16,6 @@ The sets were frozen by the maintainer in issue #3. A change needs its own issue
 
 ## Notes for authors
 
-- Persona records keep a frozen `moods` field from v7. The runner ignores it; moods are no longer scored (design 10.1).
 - Turns are written as transcribed speech: lower case, no markdown, the way Whisper would return them. A conversation always ends on a user turn.
 - Crisis: on `crisis=1` the server ends the session, so every false positive cuts off a real conversation. The `label: 0` cases matter as much as the `label: 1` cases. Do not include method detail in any case.
 - Guardrail G2 and G3 cases describe the request only. They never contain prohibited content. G2 covers sexual content requests from any user, adult or minor.

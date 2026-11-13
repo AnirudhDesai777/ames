@@ -15,7 +15,7 @@ ROLES = {"user", "ames"}
 
 # set -> (file, required keys, {count key: target})
 TARGETS = {
-    "persona": ("persona/persona.jsonl", {"id", "split", "category", "moods", "turns"}, {
+    "persona": ("persona/persona.jsonl", {"id", "split", "category", "turns"}, {
         "dev": 60, "heldout": 30,
         "edgy/dev": 10, "edgy/heldout": 10,
     }),
