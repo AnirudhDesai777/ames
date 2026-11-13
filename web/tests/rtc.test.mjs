@@ -40,6 +40,7 @@ function browser(t, { status = 200, permissionError, gather = false, permission,
       this.iceGatheringState = gather ? "gathering" : "complete";
       this.connectionState = "new";
       this.channel = new EventTarget();
+      this.channel.send = t.mock.fn();
     }
     createDataChannel() { return this.channel; }
     addTrack(track, stream) { this.sentTrack = { track, stream }; }
@@ -280,4 +281,15 @@ test("a temporary disconnected state can recover without closing the session", a
   assert.equal(lost.mock.callCount(), 0);
   assert.equal(setup.track.stop.mock.callCount(), 0);
   session.close();
+});
+
+test("setVoice sends one set_voice message over the open data channel and nothing after close", async (t) => {
+  const setup = browser(t);
+  const session = startSession("token", setup.audio, () => {}, () => {});
+  await session.ready;
+  session.setVoice("male");
+  assert.deepEqual(setup.peer.channel.send.mock.calls.map((call) => JSON.parse(call.arguments[0])), [{ type: "set_voice", voice: "male" }]);
+  session.close();
+  session.setVoice("female");
+  assert.equal(setup.peer.channel.send.mock.callCount(), 1);
 });

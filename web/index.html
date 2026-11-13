@@ -27,6 +27,10 @@
             <button id="mute" type="button" aria-pressed="false" disabled>Mute microphone</button>
             <button id="end" type="button" disabled>End session</button>
           </div>
+          <div id="voice" class="controls" role="group" aria-label="Ames voice">
+            <button type="button" data-voice="female" aria-pressed="true">Female voice</button>
+            <button type="button" data-voice="male" aria-pressed="false">Male voice</button>
+          </div>
           <details class="playback"><summary>Audio playback</summary><p>If you can't hear her, press play. For the stub echo, use headphones.</p><audio id="audio" controls aria-label="Conversation playback"></audio></details>
         </section>
         <section class="transcript-panel" aria-labelledby="transcript-title">
