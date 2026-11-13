@@ -63,7 +63,7 @@ Decided by the maintainer and not open for review. This table is the copy of rec
 
 Parakeet was chosen over Nemotron for latency headroom: p90 50 ms against the 200 ms budget. Nemotron has lower WER, but the gap is one real recognition error on 30 clips. Qwen3-TTS 1.7B CustomVoice had the best bake-off listening scores (expressiveness 4.10, naturalness 3.45) and the lowest p90 first chunk (63 ms), but the maintainer found its voices slow and tiring in conversation and replaced it with Pocket TTS (#112). Under v8 expressiveness and instruction control are no longer requirements, so the choice of LLM is still to be revisited (12).
 
-Ames is written as female, so Pocket TTS defaults to the female voice `azelma`. The web UI offers a male voice (`marius`) too; the choice is per browser, sent over the data channel as `{"type": "set_voice", "voice": "female" | "male"}`, and applies from the next sentence.
+Ames is written as female, so Pocket TTS defaults to the female voice `azelma`. The web UI offers a male voice (`marius`) too; the choice is per browser, sent over the data channel as `{"type": "set_voice", "voice": "female" | "male"}`, and applies from the next sentence the server synthesises; sentences already synthesised play in the old voice.
 
 ## 4. Hardware
 
@@ -84,7 +84,7 @@ Chrome (web/)                          Python server (server/, one process)
                                          control-token parser + tag sanitizer
                                          Pocket TTS 100M (MLX) TTS
   speaker <- WebRTC audio <------------- SmallWebRTCTransport
-  UI <- RTVI events (data channel) <---- transcript, speaking, notice
+  UI <-> RTVI events (data channel) <--> transcript, speaking, notice; set_voice from the UI
   UI <-> HTTP 127.0.0.1:8765 <---------> page, offer, health, memory
                                          idle-time memory extraction
                                          idle-time history summarising (5.5)
@@ -135,6 +135,14 @@ Streaming state uses Pipecat RTVI server messages over the WebRTC data channel:
 { "type": "notice",     "code": "session_replaced" | "session_ended" | "server_error", "text": str }
 ```
 
+The client sends one message over the same data channel:
+
+```text
+{ "type": "set_voice", "voice": "female" | "male" }
+```
+
+The server maps `female` to `azelma` and `male` to `marius`. Any other value is ignored and logged as `set_voice_invalid` without the value. Messages of any other type are ignored.
+
 There is no `state` event and no mood field: the UI has nothing to colour or label. The crisis flag never reaches the client; the client learns of a crisis exit only through `notice: session_ended` (8.4).
 
 HTTP endpoints on `http://127.0.0.1:8765`. Every endpoint checks `Host` (9.1). Every endpoint except `GET /` also requires the header `X-Ames-Token`.
@@ -150,7 +158,7 @@ HTTP endpoints on `http://127.0.0.1:8765`. Every endpoint checks `Host` (9.1). E
 
 Client-only state:
 
-- A Female voice and Male voice control sits next to mute and works before and during a session; the choice is kept in `localStorage`. Mute stops sending mic audio. End closes the WebRTC connection. Neither calls the server.
+- The Female voice / Male voice choice is kept in `localStorage` and sent to the server as `set_voice` (above) on connect and on change. Mute stops sending mic audio. End closes the WebRTC connection. Neither calls the server.
 - "Advisory seen" is stored in the browser's `localStorage`. Clearing site data shows the advisory again.
 - On `notice: session_ended` the UI keeps the notice text on screen (8.4).
 
@@ -476,9 +484,9 @@ Under v8, 10.1 no longer has a mood gate, so item 1 is the persona pass rate, th
 
 ### Models under v8: to be revisited
 
-v8 does not change the chosen models. It records that the choice is to be revisited, for two reasons.
+v8 recorded that the model choice was to be revisited, for two reasons. The TTS part is resolved.
 
-- TTS. Instruction control was a requirement for the TTS choice, because moods needed per-reply style text. Without moods it is not, which reopens smaller TTS options. Qwen3-TTS 0.6B was reportedly excluded only because it ignores instructions. That reason is not recorded in `docs/evals/voice-bakeoff.md` or issue #21 (its candidate list has only the 1.7B model), and it is unverified by listening. A smaller TTS would also leave more memory and time for the LLM. The listening scores that picked Qwen 1.7B (expressiveness 4.10, naturalness 3.45) rated expressiveness, which v8 no longer needs; naturalness still matters.
+- TTS. Resolved by #112. Without moods, instruction control was no longer a requirement. On 2026-11-13 the maintainer compared Pocket TTS 100M, Qwen3-TTS 0.6B and Kokoro 82M by listening and chose Pocket TTS, which is smaller and faster than Qwen 1.7B and leaves more memory for the LLM.
 - LLM. In `docs/evals/llm-bakeoff.md`, the eight candidates that were not judged failed the crisis recall gate without a judge, with malformed control-token counts of 2.7 to 30 per run on the crisis set and mood accuracy of 0.00 to 0.49 (the set includes the qwen35-9b baseline). A control token with only a crisis flag is simpler to emit, so small models may do better. But the two finalists failed for reasons that moods do not explain. bolt-e4b scored persona pass 0.73 against the 0.85 gate, crisis recall 0.90 against 1.00, memory precision 0.28 and recall 0.10, and mood 0.67 against 0.70. The bake-off should be re-read, and probably re-run on the new prompt, before the choice stands.
 
 ## 13. Build
@@ -552,7 +560,7 @@ Open under v8:
 - Slice D: whether v1 can ship without it, given that the memory gate (10.3) is failed by every bake-off candidate.
 - Persona eval: the `companion` prompts, the "in role" and "right move" rubric wording, and how laughter written as words is detected.
 - Memory (section 6): the `feels` predicate stores a feeling word; whether it stays in a product with no emotional rendering.
-- Models (section 12): whether to re-run the LLM bake-off on the v8 prompt, and whether to run a TTS bake-off that includes smaller models.
+- Models (section 12): whether to re-run the LLM bake-off on the v8 prompt. The TTS choice is settled (#112).
 
 Deferred to named slices: the LLM candidate list (issue #12, before E), extraction fallback (S5b, then D). S2b is done: STT and TTS choices are recorded in section 3, with no allowed inline tags. v8 removes the mood mapping S2b produced.
 

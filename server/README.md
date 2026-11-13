@@ -176,8 +176,8 @@ if `azelma.safetensors` or `marius.safetensors` is missing.
 Each session starts with the female voice (`azelma`). The client sends
 `{"type": "set_voice", "voice": "female" | "male"}` over the data channel;
 `male` selects `marius`. Any other value is ignored and logged as
-`set_voice_invalid`. A change applies from the next sentence and never cuts one
-that is playing.
+`set_voice_invalid`. A change applies from the next sentence synthesised and never
+cuts one that is playing; sentences already synthesised keep the old voice.
 The sanitizer runs before sentence splitting and strips every recognized inline
 tag. Synthesis begins as soon as the splitter emits the first complete sentence.
 

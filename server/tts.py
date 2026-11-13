@@ -58,7 +58,7 @@ class PocketTTSService(TTSService):
 
     def set_voice(self, name):
         if not isinstance(name, str) or name not in VOICES:
-            logger.error("set_voice_invalid")
+            logger.warning("set_voice_invalid")
             return
         # Read once per sentence in chunks(), so a change never cuts a sentence that is playing.
         self.voice = VOICES[name]
