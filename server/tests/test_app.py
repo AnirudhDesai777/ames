@@ -450,3 +450,19 @@ async def test_session_failure_ends_with_private_notice_and_discards_history(mon
         "code": "session_ended",
         "text": "The voice pipeline stopped. Start a new session.",
     }
+
+
+async def test_set_voice_message_reaches_the_session_tts_and_other_messages_do_not(monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
+    stt, model = app_module.model_services()
+    tts = Mock()
+    tts.new_session.return_value = tts
+    handlers = {}
+    connection = Mock()
+    connection.event_handler = lambda name: lambda handler: handlers.setdefault(name, handler)
+    monkeypatch.setattr(app_module, "build_live", Mock())
+    session = app_module.Session(connection, stt, model, tts)
+    session.prepare()
+    for message in [{"type": "set_voice", "voice": "male"}, {"type": "other", "voice": "x"}, "x"]:
+        await handlers["app-message"](connection, message)
+    tts.set_voice.assert_called_once_with("male")

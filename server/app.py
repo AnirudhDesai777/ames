@@ -60,6 +60,13 @@ class Session:
     def prepare(self):
         stt = self.stt.new_session() if hasattr(self.stt, "new_session") else StubTranscription()
         tts = self.tts.new_session() if hasattr(self.tts, "new_session") else ToneTTS()
+        if hasattr(tts, "set_voice"):
+
+            @self.connection.event_handler("app-message")
+            async def on_app_message(connection, message):
+                if isinstance(message, dict) and message.get("type") == "set_voice":
+                    tts.set_voice(message.get("voice"))
+
         self.live = build_live(self.connection, stt, self.model, tts, self.conversation)
 
     async def run(self):
