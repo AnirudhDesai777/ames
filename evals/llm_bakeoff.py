@@ -28,7 +28,7 @@ CANDIDATES = {
     "nemotron-4b": ("mlx-community/NVIDIA-Nemotron-3-Nano-4B-4bit", "c4d79ba", "lm"),
     "bonsai2-2b": ("prism-ml/Ternary-Bonsai-2-2B-mlx-2bit", "1c6cbae", "vlm"),
     "lfm3-1b7": ("LiquidAI/LFM3-1.7B-MLX-4bit", "91f3408", "vlm"),
-    "qwen35-9b": ("mlx-community/Qwen3.5-9B-MLX-4bit", "938d891", "lm"),
+    "granite42-3b": ("ibm-granite/granite-4.2-3b-q4-mlx", "0c6f39b", "lm"),
 }
 SAMPLING = {"temperature": 0.7, "top_p": 0.9, "max_tokens": MAX_REPLY_TOKENS}
 REPEATS = 3
