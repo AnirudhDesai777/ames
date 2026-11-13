@@ -23,7 +23,7 @@ Each run command below evaluates one candidate in a fresh process and exits. Use
 Run the eight mlx-lm entries in the measured server environment with mlx-lm 0.32.2 installed. Unset `AMES_STUB` for real measurements.
 
 ```sh
-for candidate in qwen35-2b qwen35-4b qwen3-4b gemma4-e4b gemma4-e2b bolt-e4b nemotron-4b qwen35-9b
+for candidate in qwen35-2b qwen35-4b qwen3-4b gemma4-e4b gemma4-e2b bolt-e4b nemotron-4b granite42-3b
 do
   env -u AMES_STUB HF_HUB_OFFLINE=1 .venv/bin/python \
     -m evals.llm_bakeoff --candidate "$candidate" --out "docs/evals/llm-bakeoff-results/$candidate.json"
