@@ -160,7 +160,7 @@ class StubLanguageModel:
         pass
 
     async def tokens(self, messages, cache_name="conversation"):
-        for text in ("<state mood=neutral crisis=0>I heard you. ", "Tell me more."):
+        for text in ("<state crisis=0>I heard you. ", "Tell me more."):
             await asyncio.sleep(0)
             yield text
 

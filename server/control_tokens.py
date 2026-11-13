@@ -5,20 +5,16 @@ import unicodedata
 from dataclasses import dataclass, replace
 from string import punctuation
 
-MOODS = ("neutral", "amused", "excited", "soft", "annoyed", "concerned")
-CONTROL_TOKEN = re.compile(r"<state mood=(" + "|".join(MOODS) + r") crisis=([01])>")
+CONTROL_TOKEN = re.compile(r"<state crisis=([01])>")
 ALLOWED_TAGS = frozenset()
 TAG_SHAPE = re.compile(r"<(?:[A-Za-z/][A-Za-z0-9_=-]*|state[A-Za-z0-9_= -]*)")
-MARKUP = ALLOWED_TAGS | {
-    f"<state mood={mood} crisis={crisis}>" for mood in MOODS for crisis in (0, 1)
-}
+MARKUP = ALLOWED_TAGS | {f"<state crisis={crisis}>" for crisis in (0, 1)}
 
 
 @dataclass(frozen=True)
 class ParserState:
     pending: str = ""
     control_done: bool = False
-    mood: str = "neutral"
     crisis: int = 0
     previous_char: str = ""
 
@@ -81,7 +77,7 @@ def parse_chunk(state: ParserState, text: str, *, final: bool = False) -> Parsed
         state = replace(state, control_done=True)
         match = CONTROL_TOKEN.fullmatch(token or "")
         if match:
-            state = replace(state, mood=match[1], crisis=int(match[2]))
+            state = replace(state, crisis=int(match[1]))
             text = text[len(match[0]) :]
         elif text.startswith("<state"):
             error_code = "control_token_malformed"

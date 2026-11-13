@@ -25,7 +25,7 @@ from server import tts
 from server.cascade import LocalLLMService, ReplySanitizer, SentenceSplitter, SpokenHistory
 from server.latency import DiscardAudioOutput
 from server.live import Conversation, SessionOutput
-from server.tts import MINIMUM, MOOD_INSTRUCTIONS, QwenTTSService
+from server.tts import MINIMUM, QwenTTSService
 
 
 @pytest.fixture
@@ -50,9 +50,7 @@ async def voice(tmp_path, monkeypatch):
         await service.cleanup()
 
 
-@pytest.mark.parametrize("mood", MOOD_INSTRUCTIONS)
-async def test_streaming_options_mood_pcm_and_local_loading(voice, mood):
-    voice.service.mood = mood
+async def test_streaming_options_pcm_and_local_loading(voice):
     frames = [frame async for frame in voice.service.run_tts("Hi.", "sentence")]
     audio = [frame for frame in frames if isinstance(frame, TTSAudioRawFrame)]
     assert len(audio) == 1
@@ -64,8 +62,6 @@ async def test_streaming_options_mood_pcm_and_local_loading(voice, mood):
     options = dict(
         text="Hi.", voice="Ryan", lang_code="english", stream=True, streaming_interval=0.1
     )
-    if MOOD_INSTRUCTIONS[mood]:
-        options["instruct"] = MOOD_INSTRUCTIONS[mood]
     voice.model.generate.assert_called_once_with(**options)
     voice.loader.assert_called_once_with(str(voice.service.model_path), model_type="qwen3_tts")
     assert voice.threads[0] != get_ident()
@@ -103,14 +99,14 @@ async def test_empty_self_test_refuses_without_fallback(tmp_path):
         await service.cleanup()
 
 
-async def test_sentence_streaming_sanitizes_and_sets_mood(voice):
+async def test_sentence_streaming_sanitizes_text(voice):
     voice.service.ready = True
     received, upstream = await run_test(
-        Pipeline([ReplySanitizer(voice.service), SentenceSplitter(), voice.service]),
+        Pipeline([ReplySanitizer(), SentenceSplitter(), voice.service]),
         frames_to_send=[
             LLMFullResponseStartFrame(),
-            LLMTextFrame("<state mood=am"),
-            LLMTextFrame("used crisis=0>Hello <laugh>there. Next"),
+            LLMTextFrame("<state cri"),
+            LLMTextFrame("sis=0>Hello <laugh>there. Next"),
             SleepFrame(0.05),
             LLMTextFrame(" sentence."),
             LLMFullResponseEndFrame(),
@@ -120,10 +116,7 @@ async def test_sentence_streaming_sanitizes_and_sets_mood(voice):
         "Hello there.",
         "Next sentence.",
     ]
-    assert all(
-        call.kwargs["instruct"] == MOOD_INSTRUCTIONS["amused"]
-        for call in voice.model.generate.call_args_list
-    )
+    assert all("instruct" not in call.kwargs for call in voice.model.generate.call_args_list)
     assert len([frame for frame in received if isinstance(frame, TTSAudioRawFrame)]) == 2
 
 
@@ -133,7 +126,7 @@ async def test_interruption_stops_audio_and_keeps_only_completed_sentences(voice
     synthesis = []
     cut = Event()
 
-    def chunks(text, mood, cancelled):
+    def chunks(text, cancelled):
         synthesis.append(text)
         try:
             for i in range(40 if text == "Cut sentence." else 2):
@@ -187,7 +180,7 @@ async def test_interruption_stops_audio_and_keeps_only_completed_sentences(voice
     assert interrupted.is_set() and cut.is_set()
     assert history == [
         {"role": "user", "content": "hi"},
-        {"role": "ames", "content": "Finished sentence.", "mood": "neutral"}
+        {"role": "ames", "content": "Finished sentence."}
         if live
         else {"role": "assistant", "content": "Finished sentence."},
     ]
@@ -249,7 +242,7 @@ async def test_interruption_drops_tts_waiting_behind_active_synthesis(voice):
     synthesis = []
     cancelled_flags = []
 
-    def chunks(text, mood, cancelled):
+    def chunks(text, cancelled):
         synthesis.append(text)
         cancelled_flags.append(cancelled)
         started.set()
@@ -286,7 +279,7 @@ async def test_first_sentence_speaks_while_llm_is_still_generating(voice):
 
     class Model:
         async def tokens(self, messages):
-            yield "<state mood=neutral crisis=0>First sentence. Next"
+            yield "<state crisis=0>First sentence. Next"
             assert await asyncio.to_thread(spoken.wait, 2)
             yield " sentence."
 
@@ -295,7 +288,7 @@ async def test_first_sentence_speaks_while_llm_is_still_generating(voice):
         Pipeline(
             [
                 LocalLLMService(Model()),
-                ReplySanitizer(voice.service),
+                ReplySanitizer(),
                 SentenceSplitter(),
                 voice.service,
             ]

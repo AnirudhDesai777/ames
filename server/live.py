@@ -31,17 +31,22 @@ class Conversation:
         self.history = []
         self.turn_id = 0
         self.reply = ""
-        self.mood = "neutral"
         self.final = True
+        self.user_speaking = False
+        self.bot_speaking = False
+        self.shown = None
 
     def finish_reply(self):
         if not self.final:
             self.events.transcript("ames", self.reply, True, self.turn_id)
             self.final = True
 
-    def state(self, mood):
-        self.mood = mood
-        self.events.state(mood, self.turn_id)
+    def show_speaking(self):
+        """One writer for the indicator: barge-in makes the stop events arrive out of order."""
+        who = "user" if self.user_speaking else "ames" if self.bot_speaking else "none"
+        if who != self.shown:
+            self.shown = who
+            self.events.speaking(who)
 
 
 class SessionPrompt(FrameProcessor):
@@ -57,9 +62,11 @@ class SessionPrompt(FrameProcessor):
             if isinstance(frame, InterruptionFrame):
                 conversation.finish_reply()
             elif isinstance(frame, UserStartedSpeakingFrame):
-                conversation.events.speaking("user")
+                conversation.user_speaking = True
+                conversation.show_speaking()
             elif isinstance(frame, UserStoppedSpeakingFrame):
-                conversation.events.speaking("none")
+                conversation.user_speaking = False
+                conversation.show_speaking()
             elif isinstance(frame, TranscriptionFrame) and frame.text.strip():
                 conversation.finish_reply()
                 conversation.turn_id += 1
@@ -70,7 +77,7 @@ class SessionPrompt(FrameProcessor):
                 history = [
                     {
                         "role": "assistant",
-                        "content": f"<state mood={message['mood']} crisis=0>\n{message['content']}",
+                        "content": f"<state crisis=0>\n{message['content']}",
                     }
                     if message["role"] == "ames"
                     else message
@@ -102,9 +109,7 @@ class SessionOutput(FrameProcessor):
                         conversation.history[-1]["content"] += " " + text
                         conversation.reply += " " + text
                     else:
-                        conversation.history.append(
-                            {"role": "ames", "content": text, "mood": conversation.mood}
-                        )
+                        conversation.history.append({"role": "ames", "content": text})
                         conversation.reply = text
                     conversation.events.transcript(
                         "ames", conversation.reply, False, conversation.turn_id
@@ -112,9 +117,11 @@ class SessionOutput(FrameProcessor):
             elif isinstance(frame, (LLMFullResponseEndFrame, InterruptionFrame, CancelFrame)):
                 conversation.finish_reply()
             elif isinstance(frame, BotStartedSpeakingFrame):
-                conversation.events.speaking("ames")
+                conversation.bot_speaking = True
+                conversation.show_speaking()
             elif isinstance(frame, BotStoppedSpeakingFrame):
-                conversation.events.speaking("none")
+                conversation.bot_speaking = False
+                conversation.show_speaking()
         await self.push_frame(frame, direction)
 
 
@@ -125,7 +132,6 @@ def live_stages(stt, model, tts, conversation, output):
             model,
             tts=tts,
             prompt=SessionPrompt(conversation, model),
-            on_state=conversation.state,
         ),
         output,
         SessionOutput(conversation),

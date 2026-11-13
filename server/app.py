@@ -193,7 +193,6 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
                     await session.connection.disconnect()
                     raise
             active = session
-            session.events.state("neutral", 0)
             session.events.speaking("none")
             session.task = asyncio.create_task(session.run())
             return web.json_response(

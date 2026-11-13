@@ -1,6 +1,6 @@
 import pytest
 
-from server.control_tokens import MOODS, ParserState, parse_chunk
+from server.control_tokens import ParserState, parse_chunk
 
 
 def parse_parts(parts):
@@ -19,19 +19,18 @@ def parse_parts(parts):
     )
 
 
-@pytest.mark.parametrize("mood", MOODS)
 @pytest.mark.parametrize("crisis", [0, 1])
-def test_valid_control_token_at_every_boundary(mood, crisis):
-    reply = f"<state mood={mood} crisis={crisis}>Hello."
+def test_valid_control_token_at_every_boundary(crisis):
+    reply = f"<state crisis={crisis}>Hello."
     for split in range(len(reply) + 1):
         state, tts, transcript, errors = parse_parts([reply[:split], reply[split:]])
-        assert (state.mood, state.crisis) == (mood, crisis)
+        assert state.crisis == crisis
         assert tts == transcript == "Hello."
         assert not errors
 
 
 def test_partial_control_token_emits_nothing():
-    result = parse_chunk(ParserState(), "<state mood=soft crisis=")
+    result = parse_chunk(ParserState(), "<state crisis=")
     assert not result.state.control_done
     assert result.tts_text == result.transcript_text == ""
     assert result.error_code is None
@@ -41,20 +40,21 @@ def test_partial_control_token_emits_nothing():
 @pytest.mark.parametrize(
     ("token", "expected"),
     [
-        ("<state mood=happy crisis=0>", ""),
-        ("<state mood=soft crisis=2>", ""),
-        ("<state mood=soft>", ""),
-        ("<state crisis=0>", ""),
-        ("<state mood=soft crisis=0 extra=1>", "<state mood=soft crisis=0 extra=1>"),
-        ('<state mood="soft" crisis=0>', '<state mood="soft" crisis=0>'),
-        ("<state mood=SOFT crisis=0>", ""),
+        ("<state mood=soft crisis=0>", ""),
+        ("<state mood=amused crisis=1>", ""),
+        ("<state crisis=2>", ""),
+        ("<state crisis=>", ""),
+        ("<state>", ""),
+        ("<state crisis=0 extra=1>", ""),
+        ('<state crisis="0">', '<state crisis="0">'),
+        ("<state CRISIS=0>", ""),
     ],
 )
 def test_malformed_control_token_at_every_boundary(token, expected):
     reply = token + "Hello."
     for split in range(len(reply) + 1):
         state, tts, transcript, errors = parse_parts([reply[:split], reply[split:]])
-        assert (state.mood, state.crisis) == ("neutral", 0)
+        assert state.crisis == 0
         assert tts == transcript == expected + "Hello."
         assert errors == ["control_token_malformed"]
 
@@ -62,25 +62,25 @@ def test_malformed_control_token_at_every_boundary(token, expected):
 @pytest.mark.parametrize("reply", ["Hello.", "", " \n"])
 def test_missing_control_token_defaults_once(reply):
     state, tts, transcript, errors = parse_parts([reply, "", ""])
-    assert (state.mood, state.crisis) == ("neutral", 0)
+    assert state.crisis == 0
     assert tts == transcript == reply.lstrip()
     assert errors == ["control_token_missing"]
 
 
 def test_leading_whitespace_and_character_chunks():
-    state, tts, transcript, errors = parse_parts(list(" \n<state mood=soft crisis=0>Hi."))
-    assert state.mood == "soft"
+    state, tts, transcript, errors = parse_parts(list(" \n<state crisis=0>Hi."))
+    assert state.crisis == 0
     assert tts == transcript == "Hi."
     assert not errors
 
 
 def test_parse_is_pure_and_state_is_per_reply(capsys, caplog):
     state = ParserState()
-    first = parse_chunk(state, "<state mood=soft crisis=1>Private text")
-    assert first == parse_chunk(state, "<state mood=soft crisis=1>Private text")
+    first = parse_chunk(state, "<state crisis=1>Private text")
+    assert first == parse_chunk(state, "<state crisis=1>Private text")
     assert state == ParserState()
     second = parse_chunk(ParserState(), "Other private text", final=True)
-    assert (second.state.mood, second.state.crisis) == ("neutral", 0)
+    assert second.state.crisis == 0
     assert second.error_code == "control_token_missing"
     assert not caplog.records
     assert capsys.readouterr() == ("", "")
@@ -88,12 +88,12 @@ def test_parse_is_pure_and_state_is_per_reply(capsys, caplog):
 
 @pytest.mark.parametrize("tag", ["<laugh>", "<chuckle>", "<sigh>", "<gasp>", "<groan>", "<yawn>"])
 def test_formerly_allowed_tags_are_stripped_at_every_boundary(tag):
-    reply = f"<state mood=amused crisis=0>Hello {tag} there."
+    reply = f"<state crisis=0>Hello {tag} there."
     for parts in [[reply[:split], reply[split:]] for split in range(len(reply) + 1)] + [
         list(reply)
     ]:
         state, tts, transcript, errors = parse_parts(parts)
-        assert state.mood == "amused"
+        assert state.crisis == 0
         assert tts == "Hello  there."
         assert transcript == "Hello  there."
         assert not errors
@@ -110,14 +110,14 @@ def test_formerly_allowed_tags_are_stripped_at_every_boundary(tag):
         ("<LAUGH>", "", ""),
         ("*laughs*", "laughs", "laughs"),
         ("*laughs <gasp> quietly*", "laughs  quietly", "laughs  quietly"),
-        ("<state mood=annoyed crisis=1>", "", ""),
+        ("<state crisis=1>", "", ""),
     ],
 )
 def test_inline_markup_at_every_boundary(markup, tts_markup, transcript_markup):
-    reply = f"<state mood=soft crisis=0>Hello {markup} there."
+    reply = f"<state crisis=0>Hello {markup} there."
     for split in range(len(reply) + 1):
         state, tts, transcript, errors = parse_parts([reply[:split], "", reply[split:]])
-        assert (state.mood, state.crisis) == ("soft", 0)
+        assert state.crisis == 0
         assert tts == f"Hello {tts_markup} there."
         assert transcript == f"Hello {transcript_markup} there."
         assert not errors
@@ -125,7 +125,7 @@ def test_inline_markup_at_every_boundary(markup, tts_markup, transcript_markup):
 
 @pytest.mark.parametrize("tag", ["<bogus>", "<smile>", "</laugh>"])
 def test_adjacent_known_and_unknown_tags_at_every_boundary(tag):
-    reply = f"<state mood=amused crisis=0>ha <laugh> ok {tag} done"
+    reply = f"<state crisis=0>ha <laugh> ok {tag} done"
     for parts in [[reply[:split], reply[split:]] for split in range(len(reply) + 1)] + [
         list(reply)
     ]:
@@ -152,7 +152,7 @@ def test_adjacent_known_and_unknown_tags_at_every_boundary(tag):
     ],
 )
 def test_tag_shape_and_limit_at_every_boundary(markup, expected):
-    reply = "<state mood=soft crisis=0>" + markup
+    reply = "<state crisis=0>" + markup
     for parts in [[reply[:split], reply[split:]] for split in range(len(reply) + 1)] + [
         list(reply)
     ]:
@@ -163,7 +163,7 @@ def test_tag_shape_and_limit_at_every_boundary(markup, expected):
 
 
 def test_sanitizer_handles_multiple_boundaries_in_one_reply():
-    reply = "<state mood=excited crisis=0><laugh>Hi.<unknown>*waves*Bye.<sigh>"
+    reply = "<state crisis=0><laugh>Hi.<unknown>*waves*Bye.<sigh>"
     for first in range(len(reply) + 1):
         for second in range(first, len(reply) + 1):
             state, tts, transcript, errors = parse_parts(
@@ -176,9 +176,9 @@ def test_sanitizer_handles_multiple_boundaries_in_one_reply():
 
 
 @pytest.mark.parametrize(
-    "suffix", ["<", "<laugh", "<bogus", "<smile", "</laugh", "<state mood=soft crisis=1"]
+    "suffix", ["<", "<laugh", "<bogus", "<smile", "</laugh", "<state crisis=1"]
 )
-@pytest.mark.parametrize("prefix", ["", "<state mood=neutral crisis=0>Hi."])
+@pytest.mark.parametrize("prefix", ["", "<state crisis=0>Hi."])
 def test_held_candidate_is_emitted_at_final_at_every_boundary(prefix, suffix):
     reply = prefix + suffix
     for split in range(len(reply) + 1):
@@ -202,7 +202,7 @@ def test_held_candidate_is_emitted_at_final_at_every_boundary(prefix, suffix):
 
 
 def test_partial_inline_tag_waits_for_closing_chunk():
-    first = parse_chunk(ParserState(), "<state mood=amused crisis=0>Hi.<lau")
+    first = parse_chunk(ParserState(), "<state crisis=0>Hi.<lau")
     assert first.tts_text == first.transcript_text == "Hi."
     last = parse_chunk(first.state, "gh>Bye.", final=True)
     assert last.tts_text == "Bye."
@@ -212,16 +212,14 @@ def test_partial_inline_tag_waits_for_closing_chunk():
 @pytest.mark.parametrize("tag", ["<laugh>", "<unknown>"])
 def test_missing_control_token_still_sanitizes_first_tag(tag):
     state, tts, transcript, errors = parse_parts(list(tag + "Hello."))
-    assert (state.mood, state.crisis) == ("neutral", 0)
+    assert state.crisis == 0
     assert tts == "Hello."
     assert transcript == "Hello."
     assert errors == ["control_token_missing"]
 
 
 def test_final_call_can_supply_text_and_keeps_unfinished_words():
-    result = parse_chunk(
-        ParserState(), "<state mood=soft crisis=0><sigh>Hello.*unfinished", final=True
-    )
+    result = parse_chunk(ParserState(), "<state crisis=0><sigh>Hello.*unfinished", final=True)
     assert result.tts_text == "Hello.unfinished"
     assert result.transcript_text == "Hello.unfinished"
     assert not result.state.pending
@@ -230,7 +228,7 @@ def test_final_call_can_supply_text_and_keeps_unfinished_words():
 
 def test_transcript_has_no_tags_in_any_emitted_chunk():
     state = ParserState()
-    reply = "<state mood=soft crisis=0><sigh>Hi.<bogus>*laughs* Bye.<smile></laugh><laugh>"
+    reply = "<state crisis=0><sigh>Hi.<bogus>*laughs* Bye.<smile></laugh><laugh>"
     for part in [*reply, ""]:
         result = parse_chunk(state, part, final=not part)
         state = result.state
@@ -256,7 +254,7 @@ def test_transcript_has_no_tags_in_any_emitted_chunk():
     ],
 )
 def test_literal_text_and_asterisk_delimiters_at_every_boundary(text, expected):
-    reply = "<state mood=soft crisis=0>" + text
+    reply = "<state crisis=0>" + text
     for parts in [[reply[:split], "", reply[split:]] for split in range(len(reply) + 1)] + [
         list(reply)
     ]:
@@ -280,7 +278,7 @@ def test_leading_literal_angle_bracket_resolves_without_final():
         assert not last.state.pending
 
 
-@pytest.mark.parametrize("prefix", ["", "<state mood=soft crisis=0>"])
+@pytest.mark.parametrize("prefix", ["", "<state crisis=0>"])
 @pytest.mark.parametrize("stray", ["< ", "<3", "<laugh ", "<state\t", "<" + "a" * 64])
 def test_long_tail_after_stray_angle_bracket_streams_before_final(prefix, stray):
     tail = " words keep streaming." * 1000
@@ -293,7 +291,7 @@ def test_long_tail_after_stray_angle_bracket_streams_before_final(prefix, stray)
 
 
 def test_trailing_asterisk_holds_only_lookahead():
-    first = parse_chunk(ParserState(), "<state mood=soft crisis=0>2*")
+    first = parse_chunk(ParserState(), "<state crisis=0>2*")
     assert first.tts_text == first.transcript_text == "2"
     assert first.state.pending == "*"
     empty = parse_chunk(first.state, "")
@@ -304,7 +302,7 @@ def test_trailing_asterisk_holds_only_lookahead():
 
 
 def test_stray_angle_bracket_releases_long_tail_without_final():
-    first = parse_chunk(ParserState(), "<state mood=soft crisis=0><")
+    first = parse_chunk(ParserState(), "<state crisis=0><")
     assert first.state.pending == "<"
     tail = " words keep streaming." * 1000
     last = parse_chunk(first.state, tail)

@@ -62,8 +62,7 @@ async def test_wav_to_spoken_audio_and_next_prompt(monkeypatch):
     class Model(StubLanguageModel):
         async def tokens(self, messages):
             prompts.append(messages)
-            mood = "amused" if len(prompts) == 1 else "neutral"
-            for text in (f"<state mood={mood} crisis=0>Hello. ", "<sigh>How are you?"):
+            for text in ("<state crisis=0>Hello. ", "<sigh>How are you?"):
                 yield text
 
     with wave.open(str(Path(__file__).parent / "fixtures/tone.wav"), "rb") as wav:
@@ -90,14 +89,14 @@ async def test_wav_to_spoken_audio_and_next_prompt(monkeypatch):
     assert prompts[0][-1] == {"role": "user", "content": "hi there"}
     assert prompts[1][1:] == [
         {"role": "user", "content": "hi there"},
-        {"role": "assistant", "content": "<state mood=amused crisis=0>\nHello. How are you?"},
+        {"role": "assistant", "content": "<state crisis=0>\nHello. How are you?"},
         {"role": "user", "content": "hi there"},
     ]
     assert conversation.history == [
         {"role": "user", "content": "hi there"},
-        {"role": "ames", "content": "Hello. How are you?", "mood": "amused"},
+        {"role": "ames", "content": "Hello. How are you?"},
         {"role": "user", "content": "hi there"},
-        {"role": "ames", "content": "Hello. How are you?", "mood": "neutral"},
+        {"role": "ames", "content": "Hello. How are you?"},
     ]
     finals = [call.args for call in events.transcript.call_args_list if call.args[2]]
     assert finals == [
@@ -106,9 +105,26 @@ async def test_wav_to_spoken_audio_and_next_prompt(monkeypatch):
         ("user", "hi there", True, 2),
         ("ames", "Hello. How are you?", True, 2),
     ]
-    events.state.assert_any_call("amused", 1)
-    events.state.assert_any_call("neutral", 2)
     events.speaking.assert_any_call("ames")
+
+
+async def test_speaking_indicator_survives_barge_in_ordering():
+    events = Mock()
+    conversation = Conversation(events)
+    conversation.bot_speaking = True
+    conversation.show_speaking()
+    conversation.user_speaking = True  # user interrupts while Ames is audible
+    conversation.show_speaking()
+    conversation.bot_speaking = False  # the bot stop arrives late
+    conversation.show_speaking()
+    conversation.show_speaking()
+    conversation.user_speaking = False
+    conversation.show_speaking()
+    assert [call.args for call in events.speaking.call_args_list] == [
+        ("ames",),
+        ("user",),
+        ("none",),
+    ]
 
 
 async def test_crisis_reply_never_reaches_tts_or_history(monkeypatch):
@@ -116,7 +132,7 @@ async def test_crisis_reply_never_reaches_tts_or_history(monkeypatch):
 
     class CrisisModel(StubLanguageModel):
         async def tokens(self, messages):
-            yield "<state mood=concerned cri"
+            yield "<state cri"
             yield "sis=1>Do not speak this."
             yield " Or this."
 
@@ -149,11 +165,7 @@ async def test_interruption_finalizes_only_completed_sentence_once():
             LLMFullResponseEndFrame(),
         ],
     )
-    assert conversation.history[-1] == {
-        "role": "ames",
-        "content": "Finished sentence.",
-        "mood": "neutral",
-    }
+    assert conversation.history[-1] == {"role": "ames", "content": "Finished sentence."}
     assert [call.args for call in events.transcript.call_args_list] == [
         ("ames", "Finished sentence.", False, 1),
         ("ames", "Finished sentence.", True, 1),
