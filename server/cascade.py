@@ -37,7 +37,7 @@ from pipecat.utils.time import time_now_iso8601
 from server.control_tokens import ParserState, parse_chunk
 from server.llm import MODEL_DIR, MLXLanguageModel, StubLanguageModel, configure_models
 from server.stt import ParakeetSTTService
-from server.tts import MODEL_NAME, QwenTTSService
+from server.tts import MODEL_NAME, PocketTTSService
 
 
 def log_errors(sink=sys.stderr):
@@ -261,8 +261,8 @@ def tts_service():
     configure_models()
     path = MODEL_DIR / MODEL_NAME
     if not path.is_dir():
-        raise RuntimeError(f"Install local Qwen files in {path}")
-    return QwenTTSService(path)
+        raise RuntimeError(f"Install local Pocket TTS files in {path}")
+    return PocketTTSService(path)
 
 
 def cascade_stages(stt, model, tts=None, prompt=None):

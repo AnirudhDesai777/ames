@@ -1,4 +1,4 @@
-"""Streaming local Qwen speech with a startup speed gate."""
+"""Streaming local Pocket TTS speech with a startup speed gate."""
 
 import asyncio
 import math
@@ -8,6 +8,7 @@ from threading import Event
 from time import perf_counter
 
 import numpy as np
+from loguru import logger
 from pipecat.frames.frames import (
     CancelFrame,
     ErrorFrame,
@@ -21,7 +22,9 @@ from pipecat.services.tts_service import TTSService
 from server.llm import configure_models
 from server.mlx_runtime import MLX_LOCK
 
-MODEL_NAME = "Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit"
+MODEL_NAME = "pocket-tts"
+# The client sends "female" or "male"; the model reads embeddings/<name>.safetensors.
+VOICES = {"female": "azelma", "male": "marius"}
 MINIMUM = (
     "Apple Silicon with 24 GB RAM and a TTS startup real-time factor at most 0.9 "
     "(reference: M4 Pro, 24 GB). See server/README.md."
@@ -29,30 +32,47 @@ MINIMUM = (
 SELF_TEST_TEXT = "Hey, I'm Ames. Tell me what's on your mind today."
 
 
-class QwenTTSService(TTSService):
+class PocketTTSService(TTSService):
     def __init__(self, model_path: Path):
         if not model_path.is_dir():
-            raise ValueError("Qwen requires an existing local model directory")
+            raise ValueError("Pocket TTS requires an existing local model directory")
         super().__init__(
             sample_rate=24000,
             push_start_frame=True,
             push_stop_frames=True,
-            settings=TTSSettings(model=str(model_path), voice="Ryan", language="en"),
+            settings=TTSSettings(model=str(model_path), voice=VOICES["female"], language="en"),
         )
         self.model_path = model_path
+        self.voice = VOICES["female"]
         self.model = None
         self.cancelled = None
         self.ready = False
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ames-tts")
 
     def new_session(self):
-        service = QwenTTSService(self.model_path)
+        service = PocketTTSService(self.model_path)
         service.model = self.model
         service.mx = self.mx
         service.ready = self.ready
         return service
 
+    def set_voice(self, name):
+        if not isinstance(name, str) or name not in VOICES:
+            logger.error("set_voice_invalid")
+            return
+        # Read once per sentence in chunks(), so a change never cuts a sentence that is playing.
+        self.voice = VOICES[name]
+
     def load_model(self):
+        missing = [
+            str(self.model_path / "embeddings" / f"{voice}.safetensors")
+            for voice in VOICES.values()
+            if not (self.model_path / "embeddings" / f"{voice}.safetensors").is_file()
+        ]
+        if missing:
+            raise RuntimeError(
+                f"Install the full Pocket TTS snapshot; missing {', '.join(missing)}"
+            )
         with MLX_LOCK:
             if self.model is not None:
                 return
@@ -61,12 +81,12 @@ class QwenTTSService(TTSService):
             from mlx_audio.tts.utils import load_model
 
             self.mx = mx
-            self.model = load_model(str(self.model_path), model_type="qwen3_tts")
+            self.model = load_model(str(self.model_path), model_type="pocket_tts")
             mx.eval(self.model.parameters())
             mx.synchronize()
 
     def chunks(self, text, cancelled):
-        options = dict(voice="Ryan", lang_code="english", stream=True, streaming_interval=0.1)
+        options = dict(voice=self.voice, stream=True, streaming_interval=0.1)
         with MLX_LOCK:
             stream = self.model.generate(text=text, **options)
         try:
@@ -82,7 +102,7 @@ class QwenTTSService(TTSService):
                     if values.ndim != 1 or not np.isfinite(values).all():
                         raise ValueError("Expected finite mono TTS audio")
                     if result.sample_rate != 24000:
-                        raise ValueError("Expected 24 kHz Qwen audio")
+                        raise ValueError("Expected 24 kHz Pocket audio")
                     pcm = (np.clip(values, -1, 1) * 32767).astype("<i2").tobytes()
                     self.mx.synchronize()
                 if pcm and not cancelled.is_set():

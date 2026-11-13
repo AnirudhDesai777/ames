@@ -25,7 +25,7 @@ from server import tts
 from server.cascade import LocalLLMService, ReplySanitizer, SentenceSplitter, SpokenHistory
 from server.latency import DiscardAudioOutput
 from server.live import Conversation, SessionOutput
-from server.tts import MINIMUM, QwenTTSService
+from server.tts import MINIMUM, PocketTTSService
 
 
 @pytest.fixture
@@ -42,7 +42,10 @@ async def voice(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "mlx", SimpleNamespace(core=mx))
     monkeypatch.setitem(sys.modules, "mlx.core", mx)
     monkeypatch.setitem(sys.modules, "mlx_audio.tts.utils", SimpleNamespace(load_model=loader))
-    service = QwenTTSService(tmp_path)
+    (tmp_path / "embeddings").mkdir()
+    for name in tts.VOICES.values():
+        (tmp_path / "embeddings" / f"{name}.safetensors").touch()
+    service = PocketTTSService(tmp_path)
     service.load_model()
     try:
         yield SimpleNamespace(service=service, model=model, loader=loader, threads=threads)
@@ -59,17 +62,16 @@ async def test_streaming_options_pcm_and_local_loading(voice):
     np.testing.assert_array_equal(
         np.frombuffer(audio[0].audio, dtype="<i2"), [-32767, -16383, 0, 16383, 32767]
     )
-    options = dict(
-        text="Hi.", voice="Ryan", lang_code="english", stream=True, streaming_interval=0.1
+    voice.model.generate.assert_called_once_with(
+        text="Hi.", voice="azelma", stream=True, streaming_interval=0.1
     )
-    voice.model.generate.assert_called_once_with(**options)
-    voice.loader.assert_called_once_with(str(voice.service.model_path), model_type="qwen3_tts")
+    voice.loader.assert_called_once_with(str(voice.service.model_path), model_type="pocket_tts")
     assert voice.threads[0] != get_ident()
 
 
 @pytest.mark.parametrize("factor,refuse", [(0.89, False), (0.9, False), (0.91, True)])
 async def test_startup_speed_gate_with_stub_audio(tmp_path, monkeypatch, factor, refuse):
-    service = QwenTTSService(tmp_path)
+    service = PocketTTSService(tmp_path)
     service.load_model = Mock()
     service.chunks = Mock(side_effect=lambda *args: iter([(b"\x01\x00" * 24000, 24000)]))
     monkeypatch.setattr(tts, "perf_counter", Mock(side_effect=[0, factor]))
@@ -89,7 +91,7 @@ async def test_startup_speed_gate_with_stub_audio(tmp_path, monkeypatch, factor,
 
 
 async def test_empty_self_test_refuses_without_fallback(tmp_path):
-    service = QwenTTSService(tmp_path)
+    service = PocketTTSService(tmp_path)
     service.load_model = Mock()
     service.chunks = Mock(return_value=iter(()))
     try:
@@ -233,7 +235,7 @@ async def test_synthesis_failure_is_private_and_has_no_sentence_receipt(voice):
 
 def test_missing_model_directory_fails(tmp_path):
     with pytest.raises(ValueError, match="existing local model directory"):
-        QwenTTSService(tmp_path / "missing")
+        PocketTTSService(tmp_path / "missing")
 
 
 async def test_interruption_drops_tts_waiting_behind_active_synthesis(voice):
@@ -311,3 +313,53 @@ async def test_new_session_reuses_loaded_voice_and_startup_gate(voice):
         voice.loader.assert_called_once()
     finally:
         await session.cleanup()
+
+
+async def test_voice_names_map_to_embeddings_and_invalid_names_are_ignored(voice):
+    async def speak():
+        return [frame async for frame in voice.service.run_tts("Hi.", "id")]
+
+    for name, embedding in [
+        ("male", "marius"),
+        ("female", "azelma"),
+        ("bogus", "azelma"),
+        (None, "azelma"),
+    ]:
+        voice.service.set_voice(name)
+        await speak()
+        assert voice.model.generate.call_args.kwargs["voice"] == embedding
+
+
+async def test_voice_change_applies_to_the_next_sentence_not_the_playing_one(voice):
+    voices = []
+    midway = Event()
+    release = Event()
+
+    def generate(**kwargs):
+        voices.append(kwargs["voice"])
+        yield SimpleNamespace(audio=np.ones(240), sample_rate=24000)
+        midway.set()
+        assert release.wait(2)
+        yield SimpleNamespace(audio=np.ones(240), sample_rate=24000)
+
+    voice.model.generate.side_effect = generate
+
+    async def speak(text):
+        return [frame async for frame in voice.service.run_tts(text, "id")]
+
+    first = asyncio.create_task(speak("First."))
+    assert await asyncio.to_thread(midway.wait, 2)
+    voice.service.set_voice("male")
+    release.set()
+    await first
+    midway.clear()
+    release.set()
+    await speak("Second.")
+    assert voices == ["azelma", "marius"]
+
+
+def test_missing_voice_file_fails_at_startup_with_install_message(tmp_path):
+    (tmp_path / "embeddings").mkdir()
+    (tmp_path / "embeddings" / "azelma.safetensors").touch()
+    with pytest.raises(RuntimeError, match="Install the full Pocket TTS snapshot.*marius"):
+        PocketTTSService(tmp_path).load_model()

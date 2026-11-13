@@ -8,7 +8,7 @@ import numpy as np
 
 from server.llm import MLXLanguageModel
 from server.stt import ParakeetSTTService
-from server.tts import QwenTTSService
+from server.tts import PocketTTSService
 
 
 async def test_stt_llm_and_tts_never_evaluate_mlx_concurrently(tmp_path, monkeypatch):
@@ -83,7 +83,10 @@ async def test_stt_llm_and_tts_never_evaluate_mlx_concurrently(tmp_path, monkeyp
         )
     stt = ParakeetSTTService(tmp_path)
     llm = MLXLanguageModel(tmp_path)
-    tts = QwenTTSService(tmp_path)
+    (tmp_path / "embeddings").mkdir()
+    for name in ("azelma", "marius"):
+        (tmp_path / "embeddings" / f"{name}.safetensors").touch()
+    tts = PocketTTSService(tmp_path)
     loop = asyncio.get_running_loop()
 
     async def speech():

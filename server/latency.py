@@ -241,7 +241,7 @@ def report(results):
     mode = (
         "stub (synthetic audio; not a hardware benchmark)"
         if os.environ.get("AMES_STUB") == "1"
-        else "local Parakeet, mlx-lm, Qwen TTS"
+        else "local Parakeet, mlx-lm, Pocket TTS"
     )
     print(f"Latency: {len(results)} turns; {mode}; 1 warm-up excluded")
     print("stage                 p50_ms      p90_ms")
