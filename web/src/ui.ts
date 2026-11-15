@@ -1,9 +1,11 @@
-import type { Rating, Session, SessionEvent, Speaker, startSession, Voice } from "./rtc";
+import type { Session, SessionEvent, Speaker, startSession, Voice } from "./rtc";
+
+type Rating = "good" | "bad";
 
 export function mountConversation(
   document: Document,
   token: string | null,
-  browser: Pick<Window, "localStorage">,
+  browser: Pick<Window, "localStorage" | "fetch">,
   connect: typeof startSession,
 ): () => void {
   const find = <T extends HTMLElement>(id: string): T => {
@@ -77,9 +79,14 @@ export function mountConversation(
       button.type = "button";
       button.textContent = rating === "good" ? "Good" : "Bad";
       button.setAttribute("aria-pressed", "false");
+      // Rating works after the session ends, so it does not use the session's data channel.
       button.addEventListener("click", () => {
-        if (phase !== "connected") return;
-        session?.rate(turnId, rating);
+        if (!token) return;
+        browser.fetch("/api/rate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Ames-Token": token },
+          body: JSON.stringify({ turn_id: turnId, rating }),
+        }).catch(() => { /* A lost rating is not worth interrupting the user. */ });
         for (const other of buttons) other.setAttribute("aria-pressed", String(other === button));
       });
       return button;

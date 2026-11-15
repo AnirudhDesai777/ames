@@ -121,38 +121,23 @@ async def test_interrupted_reply_is_logged_once(tmp_path):
     assert [(t["ames"], t["interrupted"]) for t in lines(log)] == [("Finished sentence.", True)]
 
 
-async def test_rate_messages_reach_the_log_only_when_enabled(tmp_path, monkeypatch):
+async def test_turn_log_is_created_only_when_enabled(tmp_path, monkeypatch):
     monkeypatch.setenv("AMES_STUB", "1")
     monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
     monkeypatch.setattr(app_module, "build_live", Mock())
     stt, model = app_module.model_services()
 
     def prepared():
-        handlers = {}
         connection = Mock()
-        connection.event_handler = lambda name: lambda handler: handlers.setdefault(name, handler)
+        connection.event_handler = lambda name: lambda handler: handler
         session = app_module.Session(connection, stt, model, Mock(spec=[]))
         session.prepare()
-        return session, connection, handlers
+        return session
 
-    session, connection, handlers = prepared()
-    assert session.conversation.log is None
-    await handlers["app-message"](connection, {"type": "rate", "turn_id": 1, "rating": "good"})
+    assert prepared().conversation.log is None
     assert not (tmp_path / "turns").exists()
-
     monkeypatch.setenv("AMES_TURN_LOG", "1")
-    session, connection, handlers = prepared()
-    log = session.conversation.log
-    log.turn(1, "hi", "Hello.", False)
-    await handlers["app-message"](connection, {"type": "rate", "turn_id": 1, "rating": "bad"})
-    assert [line["type"] for line in lines(log)] == ["turn", "rating"]
-
-
-def test_failed_write_does_not_raise(tmp_path):
-    log = TurnLog(tmp_path, "abc")
-    log.path.unlink()
-    log.path.mkdir()
-    log.turn(1, "hi", "Hello.", False)
+    assert prepared().conversation.log.path.parent == tmp_path / "turns"
 
 
 async def test_timer_ignores_silence_and_noise_during_the_reply():

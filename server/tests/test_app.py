@@ -11,6 +11,7 @@ from aiortc import RTCConfiguration, RTCPeerConnection, RTCSessionDescription
 from server import app as app_module
 from server.app import create_app, write_token
 from server.events import Events
+from server.turn_log import TurnLog
 
 
 @pytest.fixture
@@ -46,6 +47,7 @@ def headers(client, **extra):
         ("GET", "/assets/app.js"),
         ("GET", "/api/health"),
         ("POST", "/api/offer"),
+        ("POST", "/api/rate"),
     ],
 )
 @pytest.mark.parametrize(
@@ -64,6 +66,7 @@ async def test_bad_host_on_every_endpoint(client, method, path, host):
         ("GET", "/assets/app.js"),
         ("GET", "/api/health"),
         ("POST", "/api/offer"),
+        ("POST", "/api/rate"),
     ],
 )
 @pytest.mark.parametrize("origin", ["https://evil.example", "null", "http://localhost:8765", ""])
@@ -466,3 +469,30 @@ async def test_set_voice_message_reaches_the_session_tts_and_other_messages_do_n
     for message in [{"type": "set_voice", "voice": "male"}, {"type": "other", "voice": "x"}, "x"]:
         await handlers["app-message"](connection, message)
     tts.set_voice.assert_called_once_with("male")
+
+
+async def test_rating_endpoint_works_after_the_session_ends(client, monkeypatch, tmp_path):
+    connection = Mock()
+    connection.pc.connectionState = "closed"
+    connection.initialize = AsyncMock()
+    connection.disconnect = AsyncMock()
+    connection.get_answer.return_value = {"type": "answer", "sdp": "stub"}
+    monkeypatch.setattr(app_module, "echo_connection", lambda: connection)
+    monkeypatch.setattr(app_module, "build_live", Mock(return_value=AsyncMock()))
+    monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
+    logs = []
+    monkeypatch.setattr(app_module, "TurnLog", lambda *a: logs.append(TurnLog(*a)) or logs[-1])
+    rate = lambda **kw: client.post("/api/rate", headers=headers(client), **kw)  # noqa: E731
+    assert (await rate(json={"turn_id": 1, "rating": "good"})).status == 404
+    monkeypatch.setenv("AMES_TURN_LOG", "1")
+    offer = {"type": "offer", "sdp": "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"}
+    assert (await client.post("/api/offer", headers=headers(client), json=offer)).status == 200
+    [log] = logs
+    log.turn(1, "hi", "Hello.", False)
+    await asyncio.sleep(0)  # the stub pipeline run finishes; the session is over
+    assert (await rate(json={"turn_id": 1, "rating": "good"})).status == 204
+    assert (await rate(json={"turn_id": 1, "rating": ["x"]})).status == 204
+    assert (await rate(json=[])).status == 400
+    assert (await rate(data="{")).status == 400
+    ratings = [line for line in log.path.read_text().splitlines() if '"rating"' in line]
+    assert len(ratings) == 1 and '"good"' in ratings[0]

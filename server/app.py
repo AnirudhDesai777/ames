@@ -61,7 +61,7 @@ class Session:
     def prepare(self):
         stt = self.stt.new_session() if hasattr(self.stt, "new_session") else StubTranscription()
         tts = self.tts.new_session() if hasattr(self.tts, "new_session") else ToneTTS()
-        log = self.conversation.log = (
+        self.conversation.log = (
             TurnLog(DATA_DIR, self.session_id, lambda: getattr(tts, "voice", None))
             if os.environ.get("AMES_TURN_LOG") == "1"
             else None
@@ -72,8 +72,6 @@ class Session:
             kind = message.get("type") if isinstance(message, dict) else None
             if kind == "set_voice" and hasattr(tts, "set_voice"):
                 tts.set_voice(message.get("voice"))
-            elif kind == "rate" and log:
-                log.rate(message.get("turn_id"), message.get("rating"))
 
         self.live = build_live(self.connection, stt, self.model, tts, self.conversation)
 
@@ -214,11 +212,26 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
                 {**session.connection.get_answer(), "session_id": session.session_id}
             )
 
+    async def rate(request):
+        """Ratings go over HTTP so they still work after the session's data channel closes."""
+        try:
+            body = await request.json()
+        except (ValueError, UnicodeDecodeError):
+            raise web.HTTPBadRequest(text="Invalid rating JSON") from None
+        if not isinstance(body, dict):
+            raise web.HTTPBadRequest(text="Expected a rating object")
+        log = active.conversation.log if active else None
+        if not log:
+            raise web.HTTPNotFound(text="Turn logging is off")
+        log.rate(body.get("turn_id"), body.get("rating"))
+        return web.Response(status=204)
+
     app = web.Application(middlewares=[authenticate])
     app.cleanup_ctx.append(lifecycle)
     app.router.add_get("/", index)
     app.router.add_get("/api/health", health)
     app.router.add_post("/api/offer", offer)
+    app.router.add_post("/api/rate", rate)
     if (web_root / "assets").is_dir():
         app.router.add_static("/assets/", web_root / "assets")
     return app

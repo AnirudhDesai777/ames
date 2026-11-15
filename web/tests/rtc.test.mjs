@@ -293,14 +293,3 @@ test("setVoice sends one set_voice message over the open data channel and nothin
   session.setVoice("female");
   assert.equal(setup.peer.channel.send.mock.callCount(), 1);
 });
-
-test("rate sends one rate message over the open data channel and nothing after close", async (t) => {
-  const setup = browser(t);
-  const session = startSession("token", setup.audio, () => {}, () => {});
-  await session.ready;
-  session.rate(3, "good");
-  assert.deepEqual(setup.peer.channel.send.mock.calls.map((call) => JSON.parse(call.arguments[0])), [{ type: "rate", turn_id: 3, rating: "good" }]);
-  session.close();
-  session.rate(3, "bad");
-  assert.equal(setup.peer.channel.send.mock.callCount(), 1);
-});
