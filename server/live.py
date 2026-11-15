@@ -1,7 +1,5 @@
 """Live cascade with session-only history and transport playback receipts."""
 
-import os
-
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
@@ -186,7 +184,6 @@ def build_live(connection, stt, model, tts, conversation):
         params=PipelineParams(audio_in_sample_rate=16000, audio_out_sample_rate=24000),
         observers=[conversation.log.watch(output)] if conversation.log else [],
         enable_rtvi=False,
-        enable_tracing=os.environ.get("AMES_TRACE") == "1",
     )
     runner = WorkerRunner(handle_sigint=False, handle_sigterm=False)
 

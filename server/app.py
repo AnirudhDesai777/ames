@@ -237,17 +237,9 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
     return app
 
 
-def start_tracing():
-    if os.environ.get("AMES_TRACE") == "1":
-        from server.tracing import enable
-
-        enable()
-
-
 def main():
     os.umask(0o077)
     log_errors()
-    start_tracing()
     token = secrets.token_urlsafe(32)
 
     def open_client(message):
