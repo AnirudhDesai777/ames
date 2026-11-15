@@ -99,12 +99,15 @@ With `AMES_TURN_LOG=1` each session writes one JSONL file under
 `~/Library/Application Support/Ames/turns/` (directory 0700, file 0600). It is off by
 default. When a reply finishes, a `turn` line records the user's words, the reply as
 spoken, whether it was interrupted, the model directory name, a prefix of the system
-prompt hash, the TTS voice, and stage latencies in ms measured from the VAD stop. A
+prompt hash, the TTS voice, and stage latencies in ms. Each turn starts at its
+transcript and is timed from the last VAD stop before it; audio counts as sent when
+the output transport reports that Ames started speaking. A
 stage that did not happen is left out. Like tracing, the file holds conversation text,
 a dev-only exception to design 9.2.
 
 With the flag on, each finished reply in the web UI shows Good and Bad buttons. A
-click appends a `rating` line; the last rating for a turn wins. The server ignores
+click posts to `/api/rate`, which appends a `rating` line to the most recent session's
+log, so replies can be rated after the session ends. The last rating for a turn wins. The server ignores
 ratings for unknown turns and any rating other than `good` or `bad`.
 
 ```sh

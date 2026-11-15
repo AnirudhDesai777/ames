@@ -121,35 +121,64 @@ async def test_interrupted_reply_is_logged_once(tmp_path):
     assert [(t["ames"], t["interrupted"]) for t in lines(log)] == [("Finished sentence.", True)]
 
 
-async def test_rate_messages_reach_the_log_only_when_enabled(tmp_path, monkeypatch):
+async def test_turn_log_is_created_only_when_enabled(tmp_path, monkeypatch):
     monkeypatch.setenv("AMES_STUB", "1")
     monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
     monkeypatch.setattr(app_module, "build_live", Mock())
     stt, model = app_module.model_services()
 
     def prepared():
-        handlers = {}
         connection = Mock()
-        connection.event_handler = lambda name: lambda handler: handlers.setdefault(name, handler)
+        connection.event_handler = lambda name: lambda handler: handler
         session = app_module.Session(connection, stt, model, Mock(spec=[]))
         session.prepare()
-        return session, connection, handlers
+        return session
 
-    session, connection, handlers = prepared()
-    assert session.conversation.log is None
-    await handlers["app-message"](connection, {"type": "rate", "turn_id": 1, "rating": "good"})
+    assert prepared().conversation.log is None
     assert not (tmp_path / "turns").exists()
-
     monkeypatch.setenv("AMES_TURN_LOG", "1")
-    session, connection, handlers = prepared()
-    log = session.conversation.log
-    log.turn(1, "hi", "Hello.", False)
-    await handlers["app-message"](connection, {"type": "rate", "turn_id": 1, "rating": "bad"})
-    assert [line["type"] for line in lines(log)] == ["turn", "rating"]
+    assert prepared().conversation.log.path.parent == tmp_path / "turns"
 
 
-def test_failed_write_does_not_raise(tmp_path):
-    log = TurnLog(tmp_path, "abc")
-    log.path.unlink()
-    log.path.mkdir()
-    log.turn(1, "hi", "Hello.", False)
+async def test_timer_ignores_silence_and_noise_during_the_reply():
+    from pipecat.frames.frames import (
+        AggregatedTextFrame,
+        BotStartedSpeakingFrame,
+        LLMTextFrame,
+        OutputAudioRawFrame,
+        TranscriptionFrame,
+        TTSAudioRawFrame,
+        VADUserStoppedSpeakingFrame,
+    )
+    from pipecat.observers.base_observer import FramePushed
+    from pipecat.processors.frame_processor import FrameDirection
+
+    from server.turn_log import TurnTimer
+
+    output, other = object(), object()
+    timer = TurnTimer(output)
+    log = TurnLog.__new__(TurnLog)
+    log.observer = timer
+    ms = 1_000_000
+    events = [
+        (0, VADUserStoppedSpeakingFrame(), other),
+        (100, TranscriptionFrame("hi", "", "now"), other),
+        (110, OutputAudioRawFrame(bytes(320), 24000, 1), output),  # silence
+        (400, LLMTextFrame("Hel"), other),
+        (450, VADUserStoppedSpeakingFrame(), other),  # cafe noise mid-reply
+        (600, AggregatedTextFrame("Hello.", "sentence"), other),
+        (700, TTSAudioRawFrame(bytes(320), 24000, 1), other),
+        (720, BotStartedSpeakingFrame(), output),
+    ]
+    for at, frame, source in events:
+        await timer.on_push_frame(
+            FramePushed(source, other, frame, FrameDirection.DOWNSTREAM, at * ms)
+        )
+    assert log.latency() == {
+        "stt_final": 100,
+        "llm_first_token": 300,
+        "first_sentence": 200,
+        "tts_first_chunk": 100,
+        "transport_send": 20,
+        "total": 720,
+    }

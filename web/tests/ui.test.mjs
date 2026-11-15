@@ -15,7 +15,7 @@ function setup({ token = "test-token", seen = true, storage, browser, pending = 
     let resolve;
     let reject;
     const ready = new Promise((yes, no) => { resolve = yes; reject = no; });
-    const session = { ready, close: test.mock.fn(), setMuted: test.mock.fn(), setVoice: test.mock.fn(), rate: test.mock.fn(), receive, disconnected, resolve, reject, credential, audio };
+    const session = { ready, close: test.mock.fn(), setMuted: test.mock.fn(), setVoice: test.mock.fn(), receive, disconnected, resolve, reject, credential, audio };
     sessions.push(session);
     if (error) reject(error);
     else if (!pending) resolve();
@@ -315,8 +315,11 @@ test("a saved voice is restored, and unreadable or invalid storage falls back to
   assert.equal(voiceButton(broken, "male").getAttribute("aria-pressed"), "true");
 });
 
-test("rating buttons appear only on finished rateable replies and send the last choice", async () => {
-  const ui = await connected();
+test("rating buttons appear only on finished rateable replies and still work after the session ends", async () => {
+  const fetch = test.mock.fn(async () => ({ ok: true }));
+  const values = new Map([["ames-advisory-seen", "true"]]);
+  const storage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const ui = await connected({ browser: { localStorage: storage, fetch } });
   ui.receive({ type: "transcript", role: "ames", text: "Plain", final: true, turn_id: 1 });
   ui.receive({ type: "transcript", role: "ames", text: "Partial", final: false, turn_id: 2, rateable: true });
   assert.equal(ui.element("transcript").querySelectorAll(".rating").length, 0);
@@ -324,10 +327,12 @@ test("rating buttons appear only on finished rateable replies and send the last 
   const [good, bad] = ui.element("transcript").querySelectorAll(".rating button");
   assert.deepEqual([good.textContent, bad.textContent], ["Good", "Bad"]);
   good.click();
-  bad.click();
-  assert.deepEqual(ui.sessions[0].rate.mock.calls.map((call) => call.arguments), [[2, "good"], [2, "bad"]]);
-  assert.deepEqual([good.getAttribute("aria-pressed"), bad.getAttribute("aria-pressed")], ["false", "true"]);
   ui.click("end");
-  good.click();
-  assert.equal(ui.sessions[0].rate.mock.calls.length, 2);
+  bad.click();
+  const sent = fetch.mock.calls.map((call) => [call.arguments[0], call.arguments[1].headers["X-Ames-Token"], JSON.parse(call.arguments[1].body)]);
+  assert.deepEqual(sent, [
+    ["/api/rate", "test-token", { turn_id: 2, rating: "good" }],
+    ["/api/rate", "test-token", { turn_id: 2, rating: "bad" }],
+  ]);
+  assert.deepEqual([good.getAttribute("aria-pressed"), bad.getAttribute("aria-pressed")], ["false", "true"]);
 });
