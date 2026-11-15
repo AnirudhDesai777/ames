@@ -254,6 +254,7 @@ def test_non_call_errors_do_not_invoke_tool_continuation(raw):
     [
         (6, "Prefers a single clarifying question before getting advice"),
         (6, "She wants one clarification question prior to suggestions"),
+        (6, "Advice after one clarifying question"),
         (7, "works a 4-day week now"),
         (8, "Saturday mornings are reserved for writing"),
         (9, "remain an IC rather than become a manager"),
@@ -439,3 +440,19 @@ def test_optional_schema_rejects_invalid_policy(change):
     row["expected"].update(change)
     with pytest.raises(AssertionError):
         check_tool_case(row, "bad")
+
+
+@pytest.mark.parametrize(
+    "index,fact",
+    [
+        (6, "I prefer advice prior to one clarifying question"),
+        (9, "I prefer managing people over being an IC"),
+        (9, "I prefer management over remaining an individual contributor"),
+    ],
+)
+def test_inverse_preferences_never_receive_a_successful_save(index, fact):
+    row = ROWS[index]
+    replies = iter([call("remember", {"fact": fact}), "<state crisis=0>I could not save it."])
+    result = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
+    assert result["metrics"]["argument_quality"] == 0
+    assert not result["cases"][0]["mock_ok"]
