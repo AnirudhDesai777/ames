@@ -83,7 +83,9 @@ export function startSession(
   const connect = async () => {
     try {
       controller.signal.throwIfAborted();
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true } });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
       if (closed) stream.getTracks().forEach((track) => { track.stop(); });
       controller.signal.throwIfAborted();
       for (const track of stream.getAudioTracks()) peer.addTrack(track, stream);
