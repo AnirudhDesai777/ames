@@ -6,13 +6,12 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
+from loguru import logger
 from pipecat.frames.frames import UserStoppedSpeakingFrame, VADUserStoppedSpeakingFrame
 from pipecat.processors.frame_processor import FrameDirection
 
 from server.latency import STAGES, LatencyObserver
 from server.prompt import load_system_prompt
-
-RATINGS = {"good", "bad"}
 
 
 class TurnTimer(LatencyObserver):
@@ -41,10 +40,15 @@ class TurnLog:
         self.prompt = hashlib.sha256(load_system_prompt().encode()).hexdigest()[:12]
         self.observer = None
         self.turns = set()
+        self.ratings = {}
 
     def append(self, record: dict):
-        with self.path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        # A failed log write must never drop the user's turn.
+        try:
+            with self.path.open("a", encoding="utf-8") as file:
+                file.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except OSError as error:
+            logger.error("turn_log_failed: {}", type(error).__name__)
 
     def watch(self, output):
         self.observer = TurnTimer(output)
@@ -78,7 +82,9 @@ class TurnLog:
 
     def rate(self, turn_id, rating):
         """The client is untrusted: only ratings for logged turns are kept; the last one wins."""
-        if type(turn_id) is int and turn_id in self.turns and rating in RATINGS:
+        valid = type(turn_id) is int and turn_id in self.turns and rating in ("good", "bad")
+        if valid and self.ratings.get(turn_id) != rating:
+            self.ratings[turn_id] = rating
             self.append(
                 dict(
                     type="rating",

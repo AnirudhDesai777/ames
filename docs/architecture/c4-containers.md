@@ -59,4 +59,4 @@ Notes:
 
 - The memory store is drawn dashed and white because it is planned for v1 and not built yet. The schema and repository exist in `server/memory/` but nothing opens them.
 - The token file is written by the server when it starts. Chrome gets the token in the URL fragment, which never reaches the server.
-- Conversation text is never written to disk in v1.
+- Conversation text is never written to disk in v1, except by the dev-only turn log (`AMES_TURN_LOG=1`).

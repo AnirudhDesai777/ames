@@ -34,6 +34,8 @@ def test_turns_and_ratings_append_with_private_permissions(tmp_path, monkeypatch
         (1, "meh"),
         ("1", "good"),
         (True, "good"),
+        (1, ["good"]),
+        (1, "bad"),
     ]:
         log.rate(turn_id, rating)
     assert (tmp_path / "turns").stat().st_mode & 0o777 == 0o700
@@ -144,3 +146,10 @@ async def test_rate_messages_reach_the_log_only_when_enabled(tmp_path, monkeypat
     log.turn(1, "hi", "Hello.", False)
     await handlers["app-message"](connection, {"type": "rate", "turn_id": 1, "rating": "bad"})
     assert [line["type"] for line in lines(log)] == ["turn", "rating"]
+
+
+def test_failed_write_does_not_raise(tmp_path):
+    log = TurnLog(tmp_path, "abc")
+    log.path.unlink()
+    log.path.mkdir()
+    log.turn(1, "hi", "Hello.", False)

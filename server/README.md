@@ -47,7 +47,7 @@ which also owns generation and tokenizer access.
 History contains user transcripts and only Ames sentences whose audio finished
 transport playback. A cut sentence and queued sentences are dropped. History
 and LLM prompt caches are cleared when the session ends. Conversation text is
-never written to disk, no memory repository is opened, and the late block is
+never written to disk (except with the dev-only `AMES_TURN_LOG=1`, see Turn log), no memory repository is opened, and the late block is
 empty. The prompt maps the UI's `ames` role to `assistant` and retains at most
 3000 history content tokens. Retrieval and extraction are planned for v1 and are not built yet.
 
