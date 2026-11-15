@@ -153,3 +153,47 @@ def test_failed_write_does_not_raise(tmp_path):
     log.path.unlink()
     log.path.mkdir()
     log.turn(1, "hi", "Hello.", False)
+
+
+async def test_timer_ignores_silence_and_noise_during_the_reply():
+    from pipecat.frames.frames import (
+        AggregatedTextFrame,
+        BotStartedSpeakingFrame,
+        LLMTextFrame,
+        OutputAudioRawFrame,
+        TranscriptionFrame,
+        TTSAudioRawFrame,
+        VADUserStoppedSpeakingFrame,
+    )
+    from pipecat.observers.base_observer import FramePushed
+    from pipecat.processors.frame_processor import FrameDirection
+
+    from server.turn_log import TurnTimer
+
+    output, other = object(), object()
+    timer = TurnTimer(output)
+    log = TurnLog.__new__(TurnLog)
+    log.observer = timer
+    ms = 1_000_000
+    events = [
+        (0, VADUserStoppedSpeakingFrame(), other),
+        (100, TranscriptionFrame("hi", "", "now"), other),
+        (110, OutputAudioRawFrame(bytes(320), 24000, 1), output),  # silence
+        (400, LLMTextFrame("Hel"), other),
+        (450, VADUserStoppedSpeakingFrame(), other),  # cafe noise mid-reply
+        (600, AggregatedTextFrame("Hello.", "sentence"), other),
+        (700, TTSAudioRawFrame(bytes(320), 24000, 1), other),
+        (720, BotStartedSpeakingFrame(), output),
+    ]
+    for at, frame, source in events:
+        await timer.on_push_frame(
+            FramePushed(source, other, frame, FrameDirection.DOWNSTREAM, at * ms)
+        )
+    assert log.latency() == {
+        "stt_final": 100,
+        "llm_first_token": 300,
+        "first_sentence": 200,
+        "tts_first_chunk": 100,
+        "transport_send": 20,
+        "total": 720,
+    }

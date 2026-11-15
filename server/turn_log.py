@@ -7,23 +7,59 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from loguru import logger
-from pipecat.frames.frames import UserStoppedSpeakingFrame, VADUserStoppedSpeakingFrame
+from pipecat.frames.frames import (
+    AggregatedTextFrame,
+    BotStartedSpeakingFrame,
+    LLMTextFrame,
+    TranscriptionFrame,
+    TTSAudioRawFrame,
+    VADUserStoppedSpeakingFrame,
+)
+from pipecat.observers.base_observer import BaseObserver
 from pipecat.processors.frame_processor import FrameDirection
 
-from server.latency import STAGES, LatencyObserver
+from server.latency import STAGES
 from server.prompt import load_system_prompt
 
+STAMPS = {
+    LLMTextFrame: "llm_first_token",
+    AggregatedTextFrame: "first_sentence",
+    TTSAudioRawFrame: "tts_first_chunk",
+}
 
-class TurnTimer(LatencyObserver):
-    """Times from the VAD stop: the live pipeline may emit no turn-level stop, or a later one."""
+
+class TurnTimer(BaseObserver):
+    """Each turn starts at its transcript, so noise VAD stops during the reply cannot reset it.
+
+    The output transport also writes silence, so audio counts as sent only when it reports
+    that the bot started speaking.
+    """
+
+    def __init__(self, output):
+        super().__init__()
+        self.output = output
+        self.last_stop = None
+        self.timestamps = {}
 
     async def on_push_frame(self, data):
-        frame = data.frame
+        frame, at = data.frame, data.timestamp
+        if data.direction != FrameDirection.DOWNSTREAM:
+            return
         if isinstance(frame, VADUserStoppedSpeakingFrame):
-            if data.direction == FrameDirection.DOWNSTREAM and data.first_push:
-                self.timestamps = {"turn_end": data.timestamp}
-        elif not isinstance(frame, UserStoppedSpeakingFrame):
-            await super().on_push_frame(data)
+            self.last_stop = at
+        elif isinstance(frame, TranscriptionFrame):
+            if data.first_push and frame.text.strip():
+                self.timestamps = {
+                    "turn_end": at if self.last_stop is None else self.last_stop,
+                    "stt_final": at,
+                }
+        elif self.timestamps:
+            if isinstance(frame, BotStartedSpeakingFrame) and data.source is self.output:
+                self.timestamps.setdefault("audio_sent", at)
+            for kind, name in STAMPS.items():
+                if isinstance(frame, kind):
+                    self.timestamps.setdefault(name, at)
+                    break
 
 
 class TurnLog:
