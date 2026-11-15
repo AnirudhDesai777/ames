@@ -12,6 +12,7 @@ The sets were frozen by the maintainer in issue #3. A change needs its own issue
 | Crisis | `crisis/crisis.jsonl` | 60 conversations, 30 per split. Each split: 10 `label: 1` (3 indirect, 2 that build over several turns) and 20 `label: 0` dark-but-not-crisis | Frozen |
 | Guardrail | `guardrail/guardrail.jsonl` | 6 each for G2, G3, G4, half heldout | Frozen |
 | Memory | `memory/memory.jsonl` | 9 multi-session conversations, 3 dev and 6 heldout, 56 gold facts the user stated (20 dev and 36 heldout), 72 questions (48 heldout) | Frozen |
+| Tools | `tools/tools.jsonl` | 63 conversations: 42 dev, 21 heldout; 30 required calls, 33 no-call cases | Review draft; [format and scoring](../docs/tool-calling.md) |
 | Latency | `latency/manifest.jsonl` | 30 user turns, 16 kHz mono WAV at `latency/wav/NN.wav` | Frozen |
 
 ## Notes for authors
@@ -60,3 +61,42 @@ Missing observations are JSON `null` and fail their gate. Memory runs score 3 co
 Memory extraction runs separately on each session. Duplicate facts are combined within a conversation; facts match gold triples after trimming and case folding each field. Precision and recall pool fact counts across conversations. Questions receive only the extracted facts, with no source conversation or reference answer; the judge compares each reply with the reference answer. The extraction callable returns a JSON list of `{subject, predicate, object}` string triples. Pass `extraction_prompt` to `evaluate`, or `--extraction-prompt path/to/prompt.txt` to the CLI, to supply the extraction instructions. The fixed stub extractor ignores those instructions. This harness does not test database retrieval or deletion; those belong to the memory slices.
 
 The real-model runner for issue #12 is `python -m evals.llm_bakeoff`. Commands, candidate pins, measurement definitions and the results template live in [the LLM bake-off](../docs/evals/llm-bakeoff.md).
+
+## Tool calling
+
+The new tool set uses the same runner with deterministic mock receipts and no judge:
+
+```sh
+python -m evals.run tools --split dev --out /tmp/tools-dev.json
+python -m evals.run tools --split heldout --repeats 3 --out /tmp/tools-heldout.json
+```
+
+Unlike the frozen sets above, tools has no approved quality gates: a completed
+nonempty run reports `MEASURED`, never `PASS`. Call/no-call, tool, argument,
+over-call, malformed-call and crisis-priority metrics are independent. Arguments
+use authored required/forbidden concepts, with no allowed-word whitelist. They accept
+fragments and third-person phrasing, reject reversed meaning and catch known
+unsupported additions; the score remains a lexical proxy for human review.
+Only explicit save requests permit `remember`; incidental durable facts and trivia
+saves count as over-calling. Any attempted call on a no-call case counts, including
+malformed calls after filler. Mock continuation validity is measured separately. See the
+[protocol](../docs/tool-calling.md) for denominators, case counts and limits.
+The historical model bake-off roster is unchanged; use `evaluate("tools", ...)`
+for future candidate adapters. No real tools run.
+
+
+| Tool category | Dev | Heldout | Total |
+|---|---:|---:|---:|
+| `recall_memory` | 6 | 3 | 9 |
+| `remember` | 6 | 3 | 9 |
+| `web_search` | 4 | 2 | 6 |
+| `get_time` | 4 | 2 | 6 |
+| `no_tool` | 14 | 7 | 21 |
+| `ambiguous` | 4 | 2 | 6 |
+| `crisis` | 4 | 2 | 6 |
+
+Coverage includes implicit recall without lookup cues (3), answers already present
+in long conversations (3), incidental durable facts that must not be saved (3),
+and transient trivia that must not be saved (3). Three additional long conversations
+end in explicit save requests, for six 7–9-turn cases overall. The six ambiguous
+cases all require clarification without calling a tool.

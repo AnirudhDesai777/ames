@@ -16,11 +16,13 @@ from evals.scoring import (
     ratio,
 )
 from evals.stubs import stub_extractor, stub_judge, stub_model
+from evals.tools import evaluate_tools
 from server.control_tokens import ParserState, parse_chunk
 from server.prompt import load_system_prompt as system_prompt
 
 ROOT = Path(__file__).resolve().parent
 SETS = ("persona", "crisis", "guardrail", "memory")
+CLI_SETS = (*SETS, "tools")
 TextModel = Callable[[list[dict[str, str]]], str]
 EXTRACTION_PROMPT = (
     "Extract facts stated by the user, not by the assistant. Exclude hypotheticals, quotes, "
@@ -115,10 +117,22 @@ def evaluate(
     extractor: TextModel = stub_extractor,
     extraction_prompt: str = EXTRACTION_PROMPT,
 ) -> dict:
-    if name not in SETS or split not in ("dev", "heldout"):
+    if name not in CLI_SETS or split not in ("dev", "heldout"):
         raise ValueError("unknown eval set or split")
     rows = [row for row in rows if row["split"] == split]
     prompt = system_prompt()
+    if name == "tools":
+        counts, metrics, cases = evaluate_tools(rows, prompt, model, messages_for)
+        return {
+            "set": name,
+            "split": split,
+            "requested_split": split,
+            "counts": counts,
+            "metrics": metrics,
+            "gates": {},
+            "status": "MEASURED" if cases else "FAIL",
+            "cases": cases,
+        }
     cases = []
     for row in rows:
         case_judge = CaseJudge(judge)
@@ -282,7 +296,7 @@ def print_metrics(result: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("set", choices=SETS)
+    parser.add_argument("set", choices=CLI_SETS)
     parser.add_argument("--split", choices=("dev", "heldout"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--extraction-prompt", type=Path, help="UTF-8 extraction prompt file")
@@ -324,6 +338,8 @@ def main() -> None:
             and all(gate["passed"] for gate in gate_results.values())
             else "FAIL",
         }
+        if args.set == "tools" and all(run["cases"] for run in runs):
+            result["status"] = "MEASURED"
         if args.repeats == 1:
             result.update(counts=runs[0]["counts"], cases=runs[0]["cases"])
         args.out.parent.mkdir(parents=True, exist_ok=True)
