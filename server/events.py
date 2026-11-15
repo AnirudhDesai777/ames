@@ -11,8 +11,9 @@ class Events:
     def send(self, data: dict):
         self.connection.send_app_message(ServerMessage(data=data).model_dump())
 
-    def transcript(self, role: str, text: str, final: bool, turn_id: int):
-        self.send(dict(type="transcript", role=role, text=text, final=final, turn_id=turn_id))
+    def transcript(self, role: str, text: str, final: bool, turn_id: int, rateable=False):
+        data = dict(type="transcript", role=role, text=text, final=final, turn_id=turn_id)
+        self.send(data | {"rateable": True} if rateable else data)
 
     def speaking(self, who: str):
         self.send(dict(type="speaking", who=who))

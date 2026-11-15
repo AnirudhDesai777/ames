@@ -18,6 +18,7 @@ from server.cascade import StubTranscription, ToneTTS, log_errors, model_service
 from server.echo import echo_connection
 from server.events import Events
 from server.live import Conversation, build_live
+from server.turn_log import TurnLog
 
 HOSTS = {"127.0.0.1:8765", "localhost:8765"}
 DATA_DIR = Path.home() / "Library/Application Support/Ames"
@@ -60,12 +61,19 @@ class Session:
     def prepare(self):
         stt = self.stt.new_session() if hasattr(self.stt, "new_session") else StubTranscription()
         tts = self.tts.new_session() if hasattr(self.tts, "new_session") else ToneTTS()
-        if hasattr(tts, "set_voice"):
+        log = self.conversation.log = (
+            TurnLog(DATA_DIR, self.session_id, lambda: getattr(tts, "voice", None))
+            if os.environ.get("AMES_TURN_LOG") == "1"
+            else None
+        )
 
-            @self.connection.event_handler("app-message")
-            async def on_app_message(connection, message):
-                if isinstance(message, dict) and message.get("type") == "set_voice":
-                    tts.set_voice(message.get("voice"))
+        @self.connection.event_handler("app-message")
+        async def on_app_message(connection, message):
+            kind = message.get("type") if isinstance(message, dict) else None
+            if kind == "set_voice" and hasattr(tts, "set_voice"):
+                tts.set_voice(message.get("voice"))
+            elif kind == "rate" and log:
+                log.rate(message.get("turn_id"), message.get("rating"))
 
         self.live = build_live(self.connection, stt, self.model, tts, self.conversation)
 

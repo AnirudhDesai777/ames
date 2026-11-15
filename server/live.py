@@ -26,9 +26,11 @@ from server.cascade import cascade_stages
 
 
 class Conversation:
-    def __init__(self, events):
+    def __init__(self, events, log=None):
         self.events = events
+        self.log = log
         self.history = []
+        self.heard = ""
         self.turn_id = 0
         self.reply = ""
         self.final = True
@@ -36,10 +38,14 @@ class Conversation:
         self.bot_speaking = False
         self.shown = None
 
-    def finish_reply(self):
+    def finish_reply(self, interrupted=True):
         if not self.final:
-            self.events.transcript("ames", self.reply, True, self.turn_id)
+            self.events.transcript(
+                "ames", self.reply, True, self.turn_id, rateable=self.log is not None
+            )
             self.final = True
+            if self.log:
+                self.log.turn(self.turn_id, self.heard, self.reply, interrupted)
 
     def show_speaking(self):
         """One writer for the indicator: barge-in makes the stop events arrive out of order."""
@@ -71,6 +77,7 @@ class SessionPrompt(FrameProcessor):
                 conversation.finish_reply()
                 conversation.turn_id += 1
                 conversation.reply = ""
+                conversation.heard = frame.text
                 conversation.final = False
                 # Her turns keep their control token in the prompt, or the model
                 # copies the bare turns and stops emitting it.
@@ -114,7 +121,9 @@ class SessionOutput(FrameProcessor):
                     conversation.events.transcript(
                         "ames", conversation.reply, False, conversation.turn_id
                     )
-            elif isinstance(frame, (LLMFullResponseEndFrame, InterruptionFrame, CancelFrame)):
+            elif isinstance(frame, LLMFullResponseEndFrame):
+                conversation.finish_reply(interrupted=False)
+            elif isinstance(frame, (InterruptionFrame, CancelFrame)):
                 conversation.finish_reply()
             elif isinstance(frame, BotStartedSpeakingFrame):
                 conversation.bot_speaking = True
@@ -147,11 +156,11 @@ def build_live(connection, stt, model, tts, conversation):
     transport = SmallWebRTCTransport(
         connection, TransportParams(audio_in_enabled=True, audio_out_enabled=True)
     )
+    output = transport.output()
     worker = PipelineWorker(
-        Pipeline(
-            [transport.input(), *live_stages(stt, model, tts, conversation, transport.output())]
-        ),
+        Pipeline([transport.input(), *live_stages(stt, model, tts, conversation, output)]),
         params=PipelineParams(audio_in_sample_rate=16000, audio_out_sample_rate=24000),
+        observers=[conversation.log.watch(output)] if conversation.log else [],
         enable_rtvi=False,
         enable_tracing=os.environ.get("AMES_TRACE") == "1",
     )
