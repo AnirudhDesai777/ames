@@ -56,10 +56,18 @@ class Conversation:
 
 
 class SessionPrompt(FrameProcessor):
+    """Starts a reply when the user's turn ends.
+
+    The STT transcribes at every short VAD pause, so transcripts are held while
+    Smart Turn says the user is still speaking. Without a turn processor (stub mode)
+    no user-speaking frames arrive and each transcript starts a reply at once.
+    """
+
     def __init__(self, conversation, model):
         super().__init__()
         self.conversation = conversation
         self.model = model
+        self.pending = []
 
     async def process_frame(self, frame, direction):
         await super().process_frame(frame, direction)
@@ -73,29 +81,45 @@ class SessionPrompt(FrameProcessor):
             elif isinstance(frame, UserStoppedSpeakingFrame):
                 conversation.user_speaking = False
                 conversation.show_speaking()
+                await self.push_frame(frame, direction)
+                await self.start_turn()
+                return
             elif isinstance(frame, TranscriptionFrame) and frame.text.strip():
-                conversation.finish_reply()
-                conversation.turn_id += 1
-                conversation.reply = ""
-                conversation.heard = frame.text
-                conversation.final = False
-                # Her turns keep their control token in the prompt, or the model
-                # copies the bare turns and stops emitting it.
-                history = [
-                    {
-                        "role": "assistant",
-                        "content": f"<state crisis=0>\n{message['content']}",
-                    }
-                    if message["role"] == "ames"
-                    else message
-                    for message in conversation.history
-                ]
-                messages = await self.model.assemble(history, frame.text)
-                conversation.history.append({"role": "user", "content": frame.text})
-                conversation.events.transcript("user", frame.text, True, conversation.turn_id)
-                await self.push_frame(LLMContextFrame(LLMContext(messages)))
+                self.pending.append(frame.text.strip())
+                if conversation.user_speaking:
+                    text = " ".join(self.pending)
+                    conversation.events.transcript("user", text, False, conversation.turn_id + 1)
+                else:
+                    await self.start_turn()
                 return
         await self.push_frame(frame, direction)
+
+    async def start_turn(self):
+        if not self.pending:
+            return
+        text = " ".join(self.pending)
+        self.pending = []
+        conversation = self.conversation
+        conversation.finish_reply()
+        conversation.turn_id += 1
+        conversation.reply = ""
+        conversation.heard = text
+        conversation.final = False
+        # Her turns keep their control token in the prompt, or the model
+        # copies the bare turns and stops emitting it.
+        history = [
+            {
+                "role": "assistant",
+                "content": f"<state crisis=0>\n{message['content']}",
+            }
+            if message["role"] == "ames"
+            else message
+            for message in conversation.history
+        ]
+        messages = await self.model.assemble(history, text)
+        conversation.history.append({"role": "user", "content": text})
+        conversation.events.transcript("user", text, True, conversation.turn_id)
+        await self.push_frame(LLMContextFrame(LLMContext(messages)))
 
 
 class SessionOutput(FrameProcessor):

@@ -223,3 +223,48 @@ async def test_pipeline_error_ends_live_session_without_hanging(monkeypatch):
         "session_ended",
         "The voice pipeline stopped. Start a new session.",
     )
+
+
+async def test_transcripts_wait_for_the_end_of_the_user_turn():
+    from pipecat.frames.frames import (
+        LLMContextFrame,
+        UserStartedSpeakingFrame,
+        UserStoppedSpeakingFrame,
+    )
+
+    class Model:
+        async def assemble(self, history, text):
+            return [*history, {"role": "user", "content": text}]
+
+    events = Mock()
+    conversation = Conversation(events)
+    received, upstream = await run_test(
+        SessionPrompt(conversation, Model()),
+        frames_to_send=[
+            UserStartedSpeakingFrame(),
+            SleepFrame(0.05),
+            TranscriptionFrame("I was thinking", "", "now"),
+            TranscriptionFrame("about cats", "", "now"),
+            SleepFrame(0.05),
+            UserStoppedSpeakingFrame(),
+            SleepFrame(0.05),
+            # Smart Turn can decide before the STT finishes; the late transcript still starts.
+            UserStartedSpeakingFrame(),
+            UserStoppedSpeakingFrame(),
+            SleepFrame(0.05),
+            TranscriptionFrame("and dogs", "", "now"),
+        ],
+    )
+    contexts = [frame for frame in received if isinstance(frame, LLMContextFrame)]
+    assert [c.context.get_messages()[-1]["content"] for c in contexts] == [
+        "I was thinking about cats",
+        "and dogs",
+    ]
+    assert conversation.turn_id == 2
+    user = [call.args for call in events.transcript.call_args_list if call.args[0] == "user"]
+    assert user == [
+        ("user", "I was thinking", False, 1),
+        ("user", "I was thinking about cats", False, 1),
+        ("user", "I was thinking about cats", True, 1),
+        ("user", "and dogs", True, 2),
+    ]
