@@ -1,8 +1,8 @@
 """Ames v1 tool protocol; pure parsing, never tool execution or live pipeline wiring."""
 
 import json
-import re
 from dataclasses import dataclass
+from typing import Literal
 
 from server.control_tokens import CONTROL_TOKEN
 
@@ -47,11 +47,6 @@ FILLER = {
     "web_search": "I'm looking that up on the web.",
     "get_time": "Let me check the time.",
 }
-# These are protocol-like outputs, never spoken fallbacks for a broken call.
-CALL_ATTEMPT = re.compile(
-    r"<\s*/?tool|\b(?:recall_memory|remember|web_search|get_time)\s*\(|^\s*(?:[\[{]|```)",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
@@ -87,7 +82,10 @@ def validate_call(call: object) -> dict:
             not isinstance(value, str)
             or not value.strip()
             or len(value) > MAX_ARGUMENT_CHARS
-            or any(ord(char) < 32 or 0xD800 <= ord(char) <= 0xDFFF for char in value)
+            or any(
+                ord(char) < 32 or ord(char) == 127 or 0xD800 <= ord(char) <= 0xDFFF
+                for char in value
+            )
         ):
             raise ValueError("invalid_arguments")
     return call
@@ -98,15 +96,13 @@ def parse_reply(raw: str) -> ToolReply:
     raw = raw.strip()
     control = CONTROL_TOKEN.match(raw)
     body = raw[control.end() :].strip() if control else raw
-    attempted = bool(CALL_ATTEMPT.search(body))
+    attempted = body.lower().startswith("<tool_call") or body.startswith("{")
     if not control:
         return ToolReply(attempted=attempted, error="invalid_control")
     if control[1] == "1":
         return ToolReply(
             crisis=True, attempted=attempted, error="crisis_tool_call" if attempted else None
         )
-    if "<state" in body:
-        return ToolReply(attempted=attempted, error="invalid_control")
     if not body:
         return ToolReply(error="empty_reply")
     if not attempted:
@@ -123,6 +119,27 @@ def parse_reply(raw: str) -> ToolReply:
     except (ValueError, RecursionError):
         return ToolReply(attempted=True, error="invalid_call")
     return ToolReply(call=call, attempted=True)
+
+
+def speech_route(prefix: str, *, final: bool = False) -> Literal["wait", "speech", "hold"]:
+    """Classify the accumulated raw prefix before releasing any text to TTS.
+
+    Hold markup/JSON, crisis and invalid control tokens until the completed reply
+    is handled. Once speech is selected the caller can latch it for this generation.
+    """
+    prefix = prefix.lstrip()
+    control = CONTROL_TOKEN.match(prefix)
+    if control is None:
+        partial = any(
+            token.startswith(prefix) for token in ("<state crisis=0>", "<state crisis=1>")
+        )
+        return "wait" if partial and not final else "hold"
+    if control[1] == "1":
+        return "hold"
+    body = prefix[control.end() :].lstrip()
+    if not body:
+        return "hold" if final else "wait"
+    return "hold" if body[0] in "<{" else "speech"
 
 
 def result_message(name: str | None, *, data=None, error: str | None = None) -> dict[str, str]:

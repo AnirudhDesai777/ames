@@ -231,3 +231,19 @@ def test_no_call_stub_does_not_pass_as_a_tool_model():
     assert result["metrics"]["continuation_valid_rate"] is None
     assert result["counts"]["attempts"] == 0
     assert evaluate("tools", [])["status"] == "FAIL"
+
+
+@pytest.mark.parametrize(
+    "raw", ["no state token", "<think>why</think><state crisis=0>Hi", "<state crisis=0>"]
+)
+def test_non_call_errors_do_not_invoke_tool_continuation(raw):
+    seen = []
+
+    def model(messages):
+        seen.append(messages)
+        return raw
+
+    case = evaluate("tools", [ROWS[24]], model=model)["cases"][0]
+    assert len(seen) == 1
+    assert case["malformed"] and not case["decision_correct"]
+    assert case["continuation"] is None and case["filler"] is None

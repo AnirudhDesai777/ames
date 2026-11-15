@@ -22,8 +22,13 @@ all spoken text with exactly one envelope:
 These are four separate examples, not a batch. The outer JSON object requires
 only `name` and `arguments`. `name` must be one of the four names below. All keys
 are case sensitive; duplicate keys and extra keys are invalid. JSON whitespace
-and outer whitespace are accepted; code fences, prose around calls, multiple
-calls and incomplete JSON are invalid. No call IDs are needed: one call is in
+and outer whitespace are accepted. After the state token and whitespace, only
+an opening `<tool_call` (case insensitive) or `{` counts as a call attempt.
+Canonical envelopes must use lowercase `<tool_call>` and `</tool_call>`;
+uppercase tags count as malformed attempts and never dispatch. Bare JSON,
+multiple calls and incomplete envelopes are invalid attempts. Everything else
+is speech, including tool names, parentheses, square brackets and code fences.
+A `<think>` block before the state token is rejected as an invalid control prefix. No call IDs are needed: one call is in
 flight per evaluated user turn.
 
 | Tool | Required arguments | When to use it | Result data |
@@ -34,10 +39,10 @@ flight per evaluated user turn.
 | `get_time` | none; `{}` required | Current local date/time is needed and not already supplied. | `{"datetime": "2026-11-15T14:30:00-05:00", "timezone": "America/New_York"}` |
 
 Argument objects forbid extra properties. Strings contain 1–512 characters,
-at least one non-whitespace character, no ASCII control characters or unpaired
+at least one non-whitespace character, no ASCII control characters (including DEL, `0x7f`) or unpaired
 Unicode surrogates. The entire call envelope is at most 4096 characters. The
 executable JSON argument schemas are `TOOL_SCHEMAS` in `server/tool_calls.py`;
-`validate_call` additionally enforces the text and envelope policies.
+`validate_call` additionally enforces the text rules; `parse_reply` enforces the envelope.
 
 The envelope uses ordinary text, not added special tokens or a vendor's tool
 roles. MiniCPM5-2B, Qwen3.5-2B, LFM3-1.7B and Gemma 4 E2B will all be fine-tuned
@@ -83,9 +88,21 @@ receive one receipt such as
 There is no JSON repair or automatic retry, especially for `remember`. The model
 gets one chance to explain the failure in ordinary speech; another malformed
 output ends the attempt. Missing/malformed state tokens and empty replies also
-fail closed in this harness. Only error codes are suitable for application logs.
+fail closed in this harness, but do not trigger a tool-error continuation unless
+a call was attempted. Only error codes are suitable for application logs.
 The existing live streaming parser is unchanged and must not be used to dispatch
 these envelopes: future integration must buffer calls before any TTS or side effect.
+
+The standalone `speech_route(prefix, final=False)` helper inspects the accumulated
+raw generation. It returns `wait` while a valid state token or the first body
+character is incomplete, `hold` for crisis, invalid control prefixes, or a body
+starting with `<` or `{`, and `speech` otherwise. It withholds markup as soon as
+the first `<` arrives, before the full tool tag exists. `hold` is a speech safety
+route, not permission to execute a call; only `parse_reply` can validate a complete
+call. At end of generation, `final=True` turns incomplete prefixes into `hold`.
+A future caller can latch the speech decision and release only the body through
+the existing sanitizer, keeping held text out of TTS. The helper has chunk-prefix
+tests but is not wired into the live pipeline.
 
 Tool implementations remain behind the harness interface. For this eval, a
 matching call receives the case's fixed `mock_result`; an unexpected tool or

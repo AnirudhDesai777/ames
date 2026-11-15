@@ -34,7 +34,7 @@ def evaluate_tools(rows, prompt, model, messages_for):
         receipt = None
         filler = None
         continuation = None
-        if not parsed.crisis and (parsed.call or parsed.error):
+        if not parsed.crisis and (parsed.call or (parsed.error and parsed.attempted)):
             if parsed.error:
                 receipt = result_message(None, error=parsed.error)
             elif not right_arguments:
