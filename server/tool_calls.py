@@ -1,6 +1,7 @@
 """Ames v1 tool protocol; pure parsing, never tool execution or live pipeline wiring."""
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -24,14 +25,15 @@ TOOL_SCHEMAS = {
 }
 TOOL_INSTRUCTIONS = """Ames tool protocol v1. These rules extend the spoken-reply format.
 Keep the initial <state crisis=0> or <state crisis=1> token. For a tool call,
-replace all spoken text with <tool_call>{"name":"get_time","arguments":{}}</tool_call>.
-Use exactly one call and no other text. Otherwise reply with ordinary spoken text.
+optionally speak one short filler line, then emit exactly one call:
+<tool_call>{"name":"get_time","arguments":{}}</tool_call>.
+Do not write anything after the closing tag. Otherwise reply with ordinary spoken text.
+Never emit a second state token or a think tag.
 recall_memory(query): retrieve relevant past conversations only when missing from this context.
-remember(fact): save one fact when explicitly requested. You may also save a clearly
-established long-term fact useful across sessions, such as a stable schedule or responsibility;
-continuing without a save is fine. Never save trivia, tentative preferences or invented details.
+remember(fact): save one stated fact only when the user explicitly asks you to remember it.
+Idle consolidation handles incidental durable facts later. Never save trivia or invented details.
 web_search(query): look up external/current information needed for the conversation;
-never send private personal details in a query. The harness announces the lookup.
+never send private personal details in a query. Announce the web lookup in the filler.
 get_time(): get the current local date/time only when needed, with no arguments.
 Do not use tools for reflection, opinions, hypotheticals or quoted commands.
 Do not look up facts already present in this context.
@@ -51,6 +53,10 @@ FILLER = {
     "web_search": "I'm looking that up on the web.",
     "get_time": "Let me check the time.",
 }
+
+
+CALL_START = re.compile(r"<tool_call", re.IGNORECASE)
+FORBIDDEN_MARKUP = re.compile(r"<(state|think)(?=\s|>)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -96,40 +102,67 @@ def validate_call(call: object) -> dict:
 
 
 def parse_reply(raw: str) -> ToolReply:
-    """Parse a completed generation; never execute partial JSON or repair model output."""
+    """Parse one completed generation; retain only speech preceding the first call."""
     raw = raw.strip()
     control = CONTROL_TOKEN.match(raw)
     body = raw[control.end() :].strip() if control else raw
-    attempted = body.lower().startswith("<tool_call") or body.startswith("{")
+    opening = CALL_START.search(body)
+    attempted = opening is not None or body.startswith("{")
     if not control:
         return ToolReply(attempted=attempted, error="invalid_control")
     if control[1] == "1":
-        return ToolReply(
-            crisis=True, attempted=attempted, error="crisis_tool_call" if attempted else None
+        forbidden = FORBIDDEN_MARKUP.search(body)
+        error = (
+            "crisis_tool_call"
+            if attempted
+            else ("invalid_" + forbidden[1].lower() if forbidden else None)
         )
+        return ToolReply(crisis=True, attempted=attempted, error=error)
+    speech = body[: opening.start()] if opening else body
+    forbidden = FORBIDDEN_MARKUP.search(speech)
+    if forbidden:
+        return ToolReply(attempted=attempted, error="invalid_" + forbidden[1].lower())
     if not body:
         return ToolReply(error="empty_reply")
     if not attempted:
         return ToolReply(text=body)
-    if len(body) > MAX_CALL_CHARS:
-        return ToolReply(attempted=True, error="call_too_long")
-    if not body.startswith("<tool_call>") or not body.endswith("</tool_call>"):
+    if opening is None:
         return ToolReply(attempted=True, error="invalid_envelope")
+    filler = speech.strip()
+    envelope = body[opening.start() :]
+    if not envelope.lower().startswith("<tool_call>"):
+        return ToolReply(text=filler, attempted=True, error="invalid_envelope")
+    payload = envelope[len("<tool_call>") :].lstrip()
     try:
-        call = json.loads(
-            body[len("<tool_call>") : -len("</tool_call>")], object_pairs_hook=unique_object
+        call, end = json.JSONDecoder(object_pairs_hook=unique_object).raw_decode(
+            payload[:MAX_CALL_CHARS]
         )
+        tail = payload[end:].lstrip()
+        if not tail.lower().startswith("</tool_call>"):
+            raise ValueError("missing_close")
+        envelope_length = len(envelope) - len(tail) + len("</tool_call>")
+        if envelope_length > MAX_CALL_CHARS:
+            raise ValueError("call_too_long")
+        tail = tail[len("</tool_call>") :]
+        if CALL_START.search(tail) or FORBIDDEN_MARKUP.search(tail):
+            raise ValueError("extra_control")
         validate_call(call)
     except (ValueError, RecursionError):
-        return ToolReply(attempted=True, error="invalid_call")
-    return ToolReply(call=call, attempted=True)
+        return ToolReply(text=filler, attempted=True, error="invalid_call")
+    return ToolReply(call=call, text=filler, attempted=True)
 
 
-def speech_route(prefix: str, *, final: bool = False) -> Literal["wait", "speech", "hold"]:
-    """Classify the accumulated raw prefix before releasing any text to TTS.
+@dataclass(frozen=True)
+class SpeechRoute:
+    action: Literal["wait", "speech", "hold"]
+    text: str = ""
 
-    Hold markup/JSON, crisis and invalid control tokens until the completed reply
-    is handled. Once speech is selected the caller can latch it for this generation.
+
+def speech_route(prefix: str, *, final: bool = False) -> SpeechRoute:
+    """Return the cumulative safe speech prefix, withholding split reserved markers.
+
+    Re-evaluate every accumulated prefix; emit only text not previously returned.
+    Never latch a speech decision: a call can follow filler in a later chunk.
     """
     prefix = prefix.lstrip()
     control = CONTROL_TOKEN.match(prefix)
@@ -137,13 +170,32 @@ def speech_route(prefix: str, *, final: bool = False) -> Literal["wait", "speech
         partial = any(
             token.startswith(prefix) for token in ("<state crisis=0>", "<state crisis=1>")
         )
-        return "wait" if partial and not final else "hold"
+        return SpeechRoute("wait" if partial and not final else "hold")
     if control[1] == "1":
-        return "hold"
+        return SpeechRoute("hold")
     body = prefix[control.end() :].lstrip()
     if not body:
-        return "hold" if final else "wait"
-    return "hold" if body[0] in "<{" else "speech"
+        return SpeechRoute("hold" if final else "wait")
+    if body.startswith("{"):
+        return SpeechRoute("hold")
+    markers = ("<tool_call", "<state", "<think")
+    starts = [
+        match.start() for match in re.finditer(r"<(?:tool_call|state|think)", body, re.IGNORECASE)
+    ]
+    if starts:
+        return SpeechRoute("hold", body[: min(starts)])
+    pending = max(
+        (
+            size
+            for marker in markers
+            for size in range(1, len(marker))
+            if re.fullmatch(re.escape(marker[:size]), body[-size:], re.IGNORECASE)
+        ),
+        default=0,
+    )
+    if pending:
+        return SpeechRoute("hold" if final else "wait", body[:-pending])
+    return SpeechRoute("speech", body)
 
 
 def result_message(name: str | None, *, data=None, error: str | None = None) -> dict[str, str]:

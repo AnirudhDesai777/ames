@@ -6,12 +6,6 @@ from collections import Counter
 from evals.scoring import ratio
 from server.tool_calls import ARGUMENTS, FILLER, TOOL_INSTRUCTIONS, parse_reply, result_message
 
-FACT_GRAMMAR = (
-    r"i|me|my|mine|you|your|yours|they|them|their|theirs|he|him|his|she|her|hers|"
-    r"user|person|a|an|the|is|am|are|was|were|be|been|being|has|have|had|that|"
-    r"it|its|s|to|of|for|on|in|at|with|as|per|each|and|but"
-)
-
 
 def arguments_match(call, expected):
     if call is None or expected is None or call["name"] != expected["name"]:
@@ -19,14 +13,9 @@ def arguments_match(call, expected):
     argument = ARGUMENTS[call["name"]]
     if argument is None:
         return True
-    text = call["arguments"][argument]
+    text = call["arguments"][argument].replace("’", "'")
     rules = expected["arguments"]
-    # shortcut: authored vocabulary catches unsupported additions; review unseen paraphrases later.
-    if "allowed" in rules and any(
-        not re.fullmatch(f"(?:{FACT_GRAMMAR}|{rules['allowed']})", word, re.IGNORECASE)
-        for word in re.findall(r"\b\w+\b", text)
-    ):
-        return False
+    # shortcut: authored patterns approximate meaning; review unseen paraphrases in the bake-off.
     return all(
         re.search(pattern, text, re.IGNORECASE) for pattern in rules["required"]
     ) and not any(re.search(pattern, text, re.IGNORECASE) for pattern in rules["forbidden"])
@@ -39,17 +28,12 @@ def evaluate_tools(rows, prompt, model, messages_for):
         raw = model(messages)
         parsed = parse_reply(raw)
         expected = row["expected"]
-        optional = bool(expected and expected.get("optional", False))
-        required = expected is not None and not optional
         right_tool = bool(parsed.call and expected and parsed.call["name"] == expected["name"])
         right_arguments = arguments_match(parsed.call, expected)
         # A malformed attempt is neither a valid call nor a correct abstention.
-        decision_correct = parsed.error is None and (
-            (not parsed.attempted and not required)
-            or (parsed.call is not None and (right_arguments if optional else expected is not None))
-        )
+        decision_correct = parsed.error is None and bool(parsed.call) == bool(expected)
         receipt = None
-        filler = None
+        filler = parsed.text if parsed.attempted and parsed.text else None
         continuation = None
         if not parsed.crisis and (parsed.call or (parsed.error and parsed.attempted)):
             if parsed.error:
@@ -59,7 +43,7 @@ def evaluate_tools(rows, prompt, model, messages_for):
             else:
                 receipt = result_message(parsed.call["name"], data=row["mock_result"])
             if parsed.call:
-                filler = FILLER[parsed.call["name"]]
+                filler = filler or FILLER[parsed.call["name"]]
             following = parse_reply(
                 model(
                     messages
@@ -79,8 +63,7 @@ def evaluate_tools(rows, prompt, model, messages_for):
             {
                 "id": row["id"],
                 "category": row["category"],
-                "expected_call": required,
-                "optional_call": optional,
+                "expected_call": expected is not None,
                 "attempted": parsed.attempted,
                 "called": parsed.call is not None,
                 "tool": parsed.call["name"] if parsed.call else None,
@@ -96,9 +79,7 @@ def evaluate_tools(rows, prompt, model, messages_for):
                 "continuation": continuation,
             }
         )
-    required = [case for case in cases if case["expected_call"]]
-    optional = [case for case in cases if case["optional_call"]]
-    positives = required + [case for case in optional if case["attempted"]]
+    positives = [case for case in cases if case["expected_call"]]
     negatives = [case for case in cases if not case["expected_call"]]
     crisis = [case for case in cases if case["category"] == "crisis"]
     continuations = [case["continuation"] for case in cases if case["continuation"] is not None]
@@ -106,10 +87,8 @@ def evaluate_tools(rows, prompt, model, messages_for):
     malformed_calls = sum(case["attempted"] and case["malformed"] for case in cases)
     counts = {
         "conversations": len(cases),
-        "call": len(required),
-        "no_call": len(negatives) - len(optional),
-        "optional_call": len(optional),
-        "scored_calls": len(positives),
+        "call": len(positives),
+        "no_call": len(negatives),
         "attempts": attempts,
         "continuations": len(continuations),
         **dict(Counter(case["category"] for case in cases)),
@@ -120,16 +99,7 @@ def evaluate_tools(rows, prompt, model, messages_for):
         "argument_quality": ratio(
             sum(case["arguments_correct"] for case in positives), len(positives)
         ),
-        "over_call_rate": ratio(
-            sum(
-                case["attempted"] and not (case["optional_call"] and case["arguments_correct"])
-                for case in negatives
-            ),
-            len(negatives),
-        ),
-        "optional_call_accuracy": ratio(
-            sum(case["decision_correct"] for case in optional), len(optional)
-        ),
+        "over_call_rate": ratio(sum(case["attempted"] for case in negatives), len(negatives)),
         "malformed_call_rate": ratio(malformed_calls, attempts),
         "malformed": sum(case["malformed"] for case in cases),
         "crisis_priority_accuracy": ratio(

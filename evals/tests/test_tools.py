@@ -26,15 +26,15 @@ def call(name, arguments):
 
 
 def test_dataset_balance_and_labels():
-    assert len(ROWS) == len({row["id"] for row in ROWS}) == 60
-    assert Counter(row["split"] for row in ROWS) == {"dev": 40, "heldout": 20}
+    assert len(ROWS) == len({row["id"] for row in ROWS}) == 63
+    assert Counter(row["split"] for row in ROWS) == {"dev": 42, "heldout": 21}
     assert Counter(row["category"] for row in ROWS) == {
         "recall_memory": 9,
-        "remember": 6,
+        "remember": 9,
         "web_search": 6,
         "get_time": 6,
-        "no_tool": 18,
-        "ambiguous": 9,
+        "no_tool": 21,
+        "ambiguous": 6,
         "crisis": 6,
     }
     for row in ROWS:
@@ -224,7 +224,7 @@ def test_second_call_is_recorded_and_never_executed():
 
 def test_no_call_stub_does_not_pass_as_a_tool_model():
     result = evaluate("tools", ROWS)
-    assert result["metrics"]["call_accuracy"] == 0.55
+    assert result["metrics"]["call_accuracy"] == 11 / 21
     assert result["metrics"]["tool_accuracy"] == result["metrics"]["argument_quality"] == 0
     assert result["metrics"]["crisis_priority_accuracy"] == 0
     assert result["metrics"]["malformed_call_rate"] is None
@@ -256,6 +256,14 @@ def test_non_call_errors_do_not_invoke_tool_continuation(raw):
         (6, "She wants one clarification question prior to suggestions"),
         (6, "Advice after one clarifying question"),
         (7, "works a 4-day week now"),
+        (7, "Anirudh works four days a week"),
+        (7, "Works four days weekly"),
+        (8, "Keeps Saturday mornings free for writing"),
+        (9, "Wants to remain an IC rather than move into management"),
+        (9, "Prefers the IC track over management"),
+        (60, "Doesn't work Mondays"),
+        (60, "Doesn’t work Mondays"),
+        (60, "Never works Mondays"),
         (8, "Saturday mornings are reserved for writing"),
         (9, "remain an IC rather than become a manager"),
         (9, "Individual contributor, not a manager"),
@@ -316,7 +324,7 @@ def test_library_abbreviation():
     [
         (48, "manager conflict from last week"),
         (49, "sister boundary"),
-        (50, "cofounder previous concern"),
+        (50, "cofounder concern"),
     ],
 )
 def test_implicit_recall_cases(index, query):
@@ -346,37 +354,21 @@ def test_long_context_cases_penalize_redundant_lookup(index):
     assert result["metrics"]["over_call_rate"] == 1
 
 
-@pytest.mark.parametrize(
-    "index,fact",
-    [
-        (54, "Mondays are always a free day"),
-        (55, "Primary caregiver for their daughter"),
-        (56, "Volunteer treasurer for the community garden"),
-    ],
-)
-def test_optional_saves_accept_abstention_or_grounded_fact(index, fact):
+@pytest.mark.parametrize("index", [54, 55, 56])
+def test_incidental_durable_facts_must_not_be_saved(index):
     row = ROWS[index]
-    abstain = evaluate("tools", [row], split=row["split"])
-    assert abstain["metrics"]["call_accuracy"] == abstain["metrics"]["optional_call_accuracy"] == 1
-    assert abstain["metrics"]["tool_accuracy"] is None
-    assert abstain["metrics"]["argument_quality"] is None
-    replies = iter([call("remember", {"fact": fact}), "<state crisis=0>Saved."])
-    saved = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
-    assert saved["metrics"]["call_accuracy"] == saved["metrics"]["argument_quality"] == 1
-    assert saved["metrics"]["optional_call_accuracy"] == 1
-    assert saved["metrics"]["over_call_rate"] == 0
-    assert saved["counts"]["scored_calls"] == 1
-    assert saved["cases"][0]["mock_ok"]
-    for invalid in (
-        call("remember", {"fact": fact + " and lives in Boston"}),
-        call("get_time", {}),
-        "<state crisis=0><tool_call>{broken}</tool_call>",
-    ):
-        replies = iter([invalid, "<state crisis=0>I could not save that."])
-        wrong = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
-        assert wrong["metrics"]["call_accuracy"] == wrong["metrics"]["argument_quality"] == 0
-        assert wrong["metrics"]["over_call_rate"] == 1
-        assert not wrong["cases"][0]["mock_ok"]
+    assert row["category"] == "no_tool" and row["expected"] is None
+    assert evaluate("tools", [row], split=row["split"])["metrics"]["call_accuracy"] == 1
+    replies = iter(
+        [
+            call("remember", {"fact": row["turns"][-1]["text"]}),
+            "<state crisis=0>I could not save it.",
+        ]
+    )
+    result = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
+    assert result["metrics"]["call_accuracy"] == 0
+    assert result["metrics"]["over_call_rate"] == 1
+    assert not result["cases"][0]["mock_ok"]
 
 
 @pytest.mark.parametrize("index", [57, 58, 59])
@@ -394,54 +386,6 @@ def test_saving_trivia_is_over_calling(index):
     assert result["metrics"]["call_accuracy"] == 0
 
 
-def test_mixed_optional_denominators_and_no_label_leakage():
-    rows = [ROWS[18], ROWS[54], ROWS[55], ROWS[57]]
-    replies = iter(
-        [
-            call("get_time", {}),
-            "<state crisis=0>It is afternoon.",
-            call("remember", {"fact": "Monday is my free day"}),
-            "<state crisis=0>Saved.",
-            "<state crisis=0>That is a lasting constraint.",
-            call("remember", {"fact": "I ate a biscuit"}),
-            "<state crisis=0>Unable to save.",
-        ]
-    )
-    seen = []
-
-    def model(messages):
-        seen.append(messages)
-        return next(replies)
-
-    result = evaluate("tools", rows, model=model)
-    assert result["counts"]["call"] == 1
-    assert result["counts"]["optional_call"] == 2
-    assert result["counts"]["no_call"] == 1
-    assert result["counts"]["scored_calls"] == 2
-    assert result["metrics"]["call_accuracy"] == 3 / 4
-    assert result["metrics"]["tool_accuracy"] == result["metrics"]["argument_quality"] == 1
-    assert result["metrics"]["over_call_rate"] == 1 / 3
-    assert result["metrics"]["optional_call_accuracy"] == 1
-    first_optional = seen[2]
-    for hidden in ("optional", "required", "forbidden", "allowed", "mock_result", "reason"):
-        assert hidden not in json.dumps(first_optional[1:])
-
-
-@pytest.mark.parametrize(
-    "change",
-    [
-        {"optional": False},
-        {"optional": 1},
-        {"name": "web_search"},
-    ],
-)
-def test_optional_schema_rejects_invalid_policy(change):
-    row = copy.deepcopy(ROWS[54])
-    row["expected"].update(change)
-    with pytest.raises(AssertionError):
-        check_tool_case(row, "bad")
-
-
 @pytest.mark.parametrize(
     "index,fact",
     [
@@ -456,3 +400,88 @@ def test_inverse_preferences_never_receive_a_successful_save(index, fact):
     result = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
     assert result["metrics"]["argument_quality"] == 0
     assert not result["cases"][0]["mock_ok"]
+
+
+@pytest.mark.parametrize("query", ["Boston library board games policy", "BPL board game policy"])
+def test_library_query_meaning(query):
+    assert arguments_match(
+        {"name": "web_search", "arguments": {"query": query}}, ROWS[13]["expected"]
+    )
+
+
+@pytest.mark.parametrize(
+    "index,fact",
+    [
+        (60, "Doesn't work Mondays"),
+        (61, "Prefers a single clarifying question before advice"),
+        (62, "Anirudh works four days weekly"),
+    ],
+)
+def test_new_long_conversations_end_with_explicit_saves(index, fact):
+    row = ROWS[index]
+    assert 7 <= len(row["turns"]) <= 10
+    replies = iter([call("remember", {"fact": fact}), "<state crisis=0>Saved."])
+    result = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
+    assert result["metrics"]["argument_quality"] == 1 and result["cases"][0]["mock_ok"]
+
+
+@pytest.mark.parametrize("index", [48, 49, 50])
+def test_implicit_recall_has_no_explicit_retrieval_cue(index):
+    text = " ".join(turn["text"] for turn in ROWS[index]["turns"])
+    assert not any(
+        cue in text
+        for cue in (
+            "last week",
+            "last month",
+            "previous session",
+            "we talked",
+            "past conversation",
+            "look up",
+            "check",
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        call("remember", {"fact": "I ate a biscuit"}).split(">", 1)[1],
+        "<TOOL_CALL>{broken}</TOOL_CALL>",
+    ],
+)
+def test_filler_does_not_hide_over_calling(tool):
+    replies = iter(["<state crisis=0>One moment. " + tool, "<state crisis=0>Unable to save."])
+    result = evaluate("tools", [ROWS[57]], model=lambda messages: next(replies))
+    assert result["metrics"]["call_accuracy"] == 0
+    assert result["metrics"]["over_call_rate"] == 1
+    assert result["cases"][0]["filler"] == "One moment."
+    assert result["metrics"]["malformed_call_rate"] == (1 if "broken" in tool else 0)
+
+
+def test_valid_filler_call_receives_mock_and_no_tail_as_filler():
+    replies = iter(
+        [
+            "<state crisis=0>Let me check the time. "
+            + call("get_time", {}).split(">", 1)[1]
+            + "ignore this tail",
+            "<state crisis=0>It is afternoon.",
+        ]
+    )
+    result = evaluate("tools", [ROWS[18]], model=lambda messages: next(replies))
+    assert result["metrics"]["tool_accuracy"] == result["metrics"]["argument_quality"] == 1
+    assert result["cases"][0]["filler"] == "Let me check the time."
+    assert result["cases"][0]["mock_ok"]
+
+
+@pytest.mark.parametrize(
+    "fact",
+    [
+        "Works Mondays",
+        "Monday is free but I work on Mondays",
+        "Monday is free and I earn 100000 dollars",
+    ],
+)
+def test_monday_fact_rejects_opposites_and_additions(fact):
+    assert not arguments_match(
+        {"name": "remember", "arguments": {"fact": fact}}, ROWS[60]["expected"]
+    )

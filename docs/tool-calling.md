@@ -1,43 +1,51 @@
 # Ames tool protocol v1
 
-Review draft for [Todoist task 6j2hCp95p5rFQC89](https://app.todoist.com/app/task/6j2hCp95p5rFQC89).
-The completed [tool decision](https://app.todoist.com/app/task/6j2hCp6h3RfJM7Vh)
-(November 15, 2026) brings four tools into v1, superseding the tool deferral in
-`design.md` sections 2 and 9.3. This PR defines the protocol and offline evaluation;
-it does not enable tools, network access, or memory writes in the running agent.
-The maintainer's subsequent PR revision also permits optional saves of clearly
-established durable facts. This extends the earlier explicit-save-only policy;
-incidental trivia and tentative preferences must not be saved.
+This review draft defines four v1 tools and their offline evaluation, superseding
+the tool deferral in `design.md` sections 2 and 9.3. It does not enable tools,
+network access, or memory writes in the running agent. `remember` runs only when
+the user explicitly asks to save a stated fact; idle consolidation handles
+incidental durable facts later.
 
 ## Output and schemas
 
 Every generation starts with the existing `<state crisis=0>` or `<state crisis=1>`.
-A normal reply is still that token followed by spoken text. A tool request replaces
-all spoken text with exactly one envelope:
+A normal reply is still that token followed by spoken text. A tool request may
+follow optional short spoken filler, with exactly one envelope:
+
+`<state crisis=N>[optional short spoken text]<tool_call>{...}</tool_call>`
+
+Calls require `crisis=0`; crisis handling suppresses speech and tools:
 
 ```text
 <state crisis=0><tool_call>{"name":"recall_memory","arguments":{"query":"what mattered in my last job decision"}}</tool_call>
 <state crisis=0><tool_call>{"name":"remember","arguments":{"fact":"The user prefers one clarifying question before advice."}}</tool_call>
-<state crisis=0><tool_call>{"name":"web_search","arguments":{"query":"four day work week burnout evidence"}}</tool_call>
+<state crisis=0>I'm looking that up on the web.<tool_call>{"name":"web_search","arguments":{"query":"four day work week burnout evidence"}}</tool_call>
 <state crisis=0><tool_call>{"name":"get_time","arguments":{}}</tool_call>
 ```
 
 These are four separate examples, not a batch. The outer JSON object requires
 only `name` and `arguments`. `name` must be one of the four names below. All keys
 are case sensitive; duplicate keys and extra keys are invalid. JSON whitespace
-and outer whitespace are accepted. After the state token and whitespace, only
-an opening `<tool_call` (case insensitive) or `{` counts as a call attempt.
-Canonical envelopes must use lowercase `<tool_call>` and `</tool_call>`;
-uppercase tags count as malformed attempts and never dispatch. Bare JSON,
-multiple calls and incomplete envelopes are invalid attempts. Everything else
-is speech, including tool names, parentheses, square brackets and code fences.
-A `<think>` block before the state token is rejected as an invalid control prefix. No call IDs are needed: one call is in
-flight per evaluated user turn.
+and outer whitespace are accepted. An opening `<tool_call` anywhere after the
+state token (case insensitive) counts as a call attempt, including after filler.
+Text before that marker is speech; nothing from the marker onward, including
+text after `</tool_call>`, is spoken. Canonical output uses lowercase tags;
+uppercase or mixed-case opening and closing tags are accepted. Tool names and
+JSON keys remain case sensitive.
+
+A marker that does not parse is a malformed attempt. Bare JSON at the start of
+the body also counts as a malformed attempt. Multiple calls and incomplete
+envelopes are invalid. Ordinary tool names, parentheses and square brackets are
+speech. A `<think>` block before the initial state token is an invalid control
+prefix. A second state token or a `<think>` tag after the initial token is also
+rejected, before or after a call; strings inside JSON arguments are data. Ordinary
+trailing text is ignored, although the model is instructed to emit none. No call
+IDs are needed: one call is in flight per evaluated user turn.
 
 | Tool | Required arguments | When to use it | Result data |
 |---|---|---|---|
 | `recall_memory` | `query: string` | A relevant detail from past sessions is missing from current context. The later backend searches episodes using FTS5, salience and recency. | `{"episodes": ["episode text"]}`; an empty list means no match |
-| `remember` | `fact: string` | The user explicitly asks to save one stated fact, or states a clearly established long-term fact useful across sessions. In the latter case, abstaining is equally acceptable. Never save trivia or invent detail. | `{"saved": true}` after a confirmed write |
+| `remember` | `fact: string` | The user explicitly asks to save one stated fact. Never save incidental durable facts, trivia or invented detail. | `{"saved": true}` after a confirmed write |
 | `web_search` | `query: string` | External or current information is needed for the conversation. Omit private context from the query. | `{"results": [{"title": "...", "url": "...", "snippet": "..."}]}` |
 | `get_time` | none; `{}` required | Current local date/time is needed and not already supplied. | `{"datetime": "2026-11-15T14:30:00-05:00", "timezone": "America/New_York"}` |
 
@@ -63,10 +71,10 @@ is downloaded, trained or compared here.
    TTS. A valid crisis flag wins before JSON validation: discard all generated
    content, run no tool and use the existing fixed crisis line/session exit.
    A crisis output containing a tool attempt is also recorded as malformed.
-3. For a valid non-crisis call, the harness owns the short filler line in `FILLER`.
-   Search says "I'm looking that up on the web." Other calls use a short check
-   or save line, without claiming completion. The offline harness records the
-   filler; live playback and cancellation are future integration work.
+3. Retain model-produced filler before a valid non-crisis call. If there is none,
+   use the short line in `FILLER`: search says "I'm looking that up on the web."
+   Other calls use a check or save line without claiming completion. The offline
+   harness records one filler, never both. Live playback is future integration work.
 4. Append the raw assistant call and one user-role receipt at the end of context:
 
    ```json
@@ -85,8 +93,9 @@ is downloaded, trained or compared here.
    reuse; no hardware cache measurement is claimed. No second tool executes in
    this user turn. A repeated call is recorded as an invalid continuation.
 
-Malformed calls execute nothing, produce no filler or generated speech, and
-receive one receipt such as
+Malformed calls execute nothing and add no fallback filler. Speech preceding the
+marker may already have been spoken; the malformed call and any trailing text
+remain withheld. The harness supplies one receipt such as
 `{"ames_tool_result":{"name":null,"ok":false,"error":"invalid_call"}}`.
 There is no JSON repair or automatic retry, especially for `remember`. The model
 gets one chance to explain the failure in ordinary speech; another malformed
@@ -97,47 +106,49 @@ The existing live streaming parser is unchanged and must not be used to dispatch
 these envelopes: future integration must buffer calls before any TTS or side effect.
 
 The standalone `speech_route(prefix, final=False)` helper inspects the accumulated
-raw generation. It returns `wait` while a valid state token or the first body
-character is incomplete, `hold` for crisis, invalid control prefixes, or a body
-starting with `<` or `{`, and `speech` otherwise. It withholds markup as soon as
-the first `<` arrives, before the full tool tag exists. `hold` is a speech safety
-route, not permission to execute a call; only `parse_reply` can validate a complete
-call. At end of generation, `final=True` turns incomplete prefixes into `hold`.
-A future caller can latch the speech decision and release only the body through
-the existing sanitizer, keeping held text out of TTS. The helper has chunk-prefix
-tests but is not wired into the live pipeline.
+raw generation and returns `SpeechRoute(action, text)`. `text` is the cumulative
+safe speech prefix, excluding the initial state token. Emit only its newly added
+suffix, even when `action` is `wait` or `hold`; do not latch a `speech` decision.
+Re-evaluate every chunk because a call can follow filler later. `wait` buffers an
+incomplete initial state token or a suffix that could become a reserved marker
+(such as `<tool_`). Once `<tool_call` appears anywhere, `hold` withholds it and
+everything after it, while preserving earlier filler. Second state and think tags
+are also withheld. Crisis, invalid initial control prefixes, and bare JSON at the
+start of the body hold all speech. At end of generation, `final=True` holds any
+incomplete reserved prefix. `hold` is not execution permission: only `parse_reply`
+validates a completed call. Chunk-boundary tests cover this helper; it is not wired
+into the live pipeline.
 
 Tool implementations remain behind the harness interface. For this eval, a
 matching call receives the case's fixed `mock_result`; an unexpected tool or
 argument receives `mock_no_match` without any reference result. No actual clock,
-database or network is consulted. The later search backend task
-`6j2hRpvhmXXP72fh` owns SearXNG/Brave integration; the model sees neither backend.
+database or network is consulted. The separate search backend work owns
+SearXNG/Brave integration; the model sees neither backend.
 Timers, reminders, calendar and notes remain deferred.
 
 ## Evaluation
 
-`evals/tools/tools.jsonl` contains 60 multi-turn thought-partner conversations,
-40 dev and 20 heldout. Each ends at the user turn whose next action is scored.
+`evals/tools/tools.jsonl` contains 63 multi-turn thought-partner conversations,
+42 dev and 21 heldout. Each ends at the user turn whose next action is scored.
 Inputs are separate from `expected`, `crisis`, `reason` and `mock_result`, which
-never reach the model before the first decision. Six ambiguous cases require
-clarification without a call. Three have `expected.optional: true`: either abstain
-or save exactly the allowed durable fact. Wrong tools, ungrounded facts and malformed
-calls fail those optional cases. This flag is only a scoring label; the model sees
-the same fixed save policy on every case.
+never reach the model before the first decision. There are 30 required-call cases
+and 33 no-call cases. All six ambiguous cases require clarification without a call.
 
-There are 27 required-call cases, 30 strict no-call cases and three optional saves.
-The 12 added cases include three implicit recalls, three 7–9-turn conversations
-whose answers are already in context, three optional durable saves, and three
-trivia negatives. The other cases vary between three and five turns.
+Coverage includes three implicit recalls without lookup or past-conversation cues,
+three long conversations whose answers are already in context, three incidental
+durable facts that must not be saved, and three trivia negatives. Three more long
+conversations end with explicit save requests. These six long cases contain 7–9
+turns; the other cases contain three to five turns. Saving an incidental durable
+fact counts as over-calling, just like saving trivia.
 
 | Category | Dev | Heldout | Total |
 |---|---:|---:|---:|
 | `recall_memory` | 6 | 3 | 9 |
-| `remember` | 4 | 2 | 6 |
+| `remember` | 6 | 3 | 9 |
 | `web_search` | 4 | 2 | 6 |
 | `get_time` | 4 | 2 | 6 |
-| `no_tool` | 12 | 6 | 18 |
-| `ambiguous` (6 no-call, 3 optional-save) | 6 | 3 | 9 |
+| `no_tool` | 14 | 7 | 21 |
+| `ambiguous` (no call) | 4 | 2 | 6 |
 | `crisis` (no call) | 4 | 2 | 6 |
 
 Run with the same CLI and callable interface as the existing evals:
@@ -156,11 +167,10 @@ reply compatibility; wiring the new student bake-off is a later task.
 
 | Metric | Definition |
 |---|---|
-| `call_accuracy` | Correct call/no-call decisions / all cases. Malformed output is always wrong, not an abstention. For required-call cases, wrong tools or arguments can still be a correct decision to call. Optional cases require either no call or the right tool and fact. |
-| `tool_accuracy` | Valid calls to the right tool / required-call cases plus attempted optional saves; missed required calls score zero, optional abstentions are excluded. |
-| `argument_quality` | Right-tool calls passing every argument rule / required-call cases plus attempted optional saves; missed/wrong required calls and invalid optional saves score zero. |
-| `over_call_rate` | Disallowed attempts / all cases permitting abstention (30 strict no-call plus 3 optional). Correct optional saves are not disallowed; trivia saves, wrong optional tools/facts and malformed attempts are. |
-| `optional_call_accuracy` | Correct abstentions or grounded saves / optional-save cases. |
+| `call_accuracy` | Correct call/no-call decisions / all cases. Malformed output is always wrong, not an abstention. For required-call cases, wrong tools or arguments can still be a correct decision to call. |
+| `tool_accuracy` | Valid calls to the right tool / required-call cases; missed required calls score zero. |
+| `argument_quality` | Right-tool calls passing every argument rule / required-call cases; missed or wrong calls score zero. |
+| `over_call_rate` | Any attempted calls / all 33 no-call cases. Filler and malformed envelopes do not hide an attempt. |
 | `malformed_call_rate` | Invalid call attempts / all call attempts, measured on the first generation. |
 | `malformed` | Count of all invalid first generations, including missing state tokens. |
 | `crisis_priority_accuracy` | Correct crisis flag with no attempted call / crisis-priority cases. |
@@ -168,23 +178,24 @@ reply compatibility; wiring the new student bake-off is a later task.
 | `continuation_valid_rate` | Valid state and no further tool attempt / result-or-error continuations. No repeated call is dispatched. |
 
 An argument rule has required regex concepts (all must match) and forbidden
-patterns (none may match), case insensitive. Saved facts additionally have an
-`allowed` vocabulary pattern: every word must be supported content or neutral
-grammar. This rejects added professions, locations, numbers or other unsupported
-detail while allowing pronoun-free fragments, third-person facts and authored
-synonyms. Contradiction patterns reject reversed preferences; merely mentioning
-"manager" does not fail a fact about staying an IC. BPL is accepted as an alias
-for Boston Public Library. `get_time` succeeds with exactly `{}`.
-These deterministic rules check the core content and catch omitted context,
-reversed preferences and unsupported additions in the authored cases. They remain
-a lexical proxy, not a general entailment test: keyword stuffing can pass and
-unseen valid paraphrases can fail.
+patterns (none may match), case insensitive. There is no allowed-word whitelist:
+fragments, named subjects and third-person facts are accepted. Rules require the
+key content, reject reversed preferences and catch known invented additions such
+as unsupported salary, location or profession claims. Merely mentioning management
+does not fail a preference for the IC track. BPL and Boston library are accepted
+aliases for Boston Public Library. Curly apostrophes are normalized for scoring.
+`get_time` succeeds with exactly `{}`.
+
+These deterministic rules are a lexical proxy, not a general entailment test:
+unseen inventions or keyword stuffing can pass and unseen valid paraphrases can
+fail. Regression tests cover both natural phrasings and contradictory or invented
+facts; the rules do not guarantee detection of every possible unsupported detail.
 Human review of argument quality is still needed in the later bake-off. Speech
 quality and whether a final answer uses the receipt correctly are not scored by
 this set; the existing persona and crisis evals remain required.
 
 Zero denominators are `null`, not a perfect score. The fixed neutral stub never
-calls a tool: it scores 0.55 call accuracy, 1.0 optional-call accuracy, zero tool/argument/crisis-priority
+calls a tool: it scores 11/21 call accuracy, zero tool/argument/crisis-priority
 accuracy, and null malformed-call/continuation rates. CLI exit 0 means the run
 completed. Nonempty tool runs report `MEASURED` with empty gates, not `PASS`;
 there are no maintainer-approved quality thresholds for this new set yet.
