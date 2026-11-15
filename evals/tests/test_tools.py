@@ -26,15 +26,15 @@ def call(name, arguments):
 
 
 def test_dataset_balance_and_labels():
-    assert len(ROWS) == len({row["id"] for row in ROWS}) == 48
-    assert Counter(row["split"] for row in ROWS) == {"dev": 32, "heldout": 16}
+    assert len(ROWS) == len({row["id"] for row in ROWS}) == 60
+    assert Counter(row["split"] for row in ROWS) == {"dev": 40, "heldout": 20}
     assert Counter(row["category"] for row in ROWS) == {
-        "recall_memory": 6,
+        "recall_memory": 9,
         "remember": 6,
         "web_search": 6,
         "get_time": 6,
-        "no_tool": 12,
-        "ambiguous": 6,
+        "no_tool": 18,
+        "ambiguous": 9,
         "crisis": 6,
     }
     for row in ROWS:
@@ -224,7 +224,7 @@ def test_second_call_is_recorded_and_never_executed():
 
 def test_no_call_stub_does_not_pass_as_a_tool_model():
     result = evaluate("tools", ROWS)
-    assert result["metrics"]["call_accuracy"] == 0.5
+    assert result["metrics"]["call_accuracy"] == 0.55
     assert result["metrics"]["tool_accuracy"] == result["metrics"]["argument_quality"] == 0
     assert result["metrics"]["crisis_priority_accuracy"] == 0
     assert result["metrics"]["malformed_call_rate"] is None
@@ -247,3 +247,195 @@ def test_non_call_errors_do_not_invoke_tool_continuation(raw):
     assert len(seen) == 1
     assert case["malformed"] and not case["decision_correct"]
     assert case["continuation"] is None and case["filler"] is None
+
+
+@pytest.mark.parametrize(
+    "index,fact",
+    [
+        (6, "Prefers a single clarifying question before getting advice"),
+        (6, "She wants one clarification question prior to suggestions"),
+        (7, "works a 4-day week now"),
+        (8, "Saturday mornings are reserved for writing"),
+        (9, "remain an IC rather than become a manager"),
+        (9, "Individual contributor, not a manager"),
+        (10, "Honest pushback, not reassurance"),
+        (11, "Their side project: neighborhood seed library"),
+    ],
+)
+def test_natural_remember_facts(index, fact):
+    expected = ROWS[index]["expected"]
+    assert arguments_match({"name": "remember", "arguments": {"fact": fact}}, expected)
+
+
+@pytest.mark.parametrize(
+    "index,fact",
+    [
+        (6, "Prefers three questions before advice"),
+        (6, "Prefers advice before one clarifying question"),
+        (6, "Prefers one clarifying question before advice and earns 100000 dollars"),
+        (7, "Works a five-day week"),
+        (7, "Works four days a week as a doctor"),
+        (8, "Sunday mornings are reserved for writing"),
+        (9, "Wants to become a manager rather than remain an IC"),
+        (9, "Does not want to remain an IC"),
+        (9, "An IC with ten years of experience"),
+        (10, "Prefers reassurance over direct disagreement"),
+        (11, "Side project: neighborhood seed library in Boston"),
+    ],
+)
+def test_wrong_or_invented_fact_content(index, fact):
+    assert not arguments_match(
+        {"name": "remember", "arguments": {"fact": fact}}, ROWS[index]["expected"]
+    )
+
+
+def test_library_abbreviation():
+    assert arguments_match(
+        {
+            "name": "web_search",
+            "arguments": {
+                "query": "BPL board game meetup policy",
+            },
+        },
+        ROWS[13]["expected"],
+    )
+    assert not arguments_match(
+        {
+            "name": "web_search",
+            "arguments": {
+                "query": "NYPL board game meetup policy",
+            },
+        },
+        ROWS[13]["expected"],
+    )
+
+
+@pytest.mark.parametrize(
+    "index,query",
+    [
+        (48, "manager conflict from last week"),
+        (49, "sister boundary"),
+        (50, "cofounder previous concern"),
+    ],
+)
+def test_implicit_recall_cases(index, query):
+    row = ROWS[index]
+    first = call("recall_memory", {"query": query})
+    replies = iter([first, "<state crisis=0>That was the constraint you wanted to protect."])
+    result = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
+    assert result["metrics"]["argument_quality"] == 1
+    assert result["cases"][0]["mock_ok"]
+    missed = evaluate("tools", [row], split=row["split"])
+    assert missed["metrics"]["call_accuracy"] == 0
+
+
+@pytest.mark.parametrize("index", [51, 52, 53])
+def test_long_context_cases_penalize_redundant_lookup(index):
+    row = ROWS[index]
+    assert 6 <= len(row["turns"]) <= 10
+    result = evaluate("tools", [row], split=row["split"])
+    assert result["metrics"]["call_accuracy"] == 1
+    replies = iter(
+        [
+            call("recall_memory", {"query": "earlier decision"}),
+            "<state crisis=0>I could not find it.",
+        ]
+    )
+    result = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
+    assert result["metrics"]["over_call_rate"] == 1
+
+
+@pytest.mark.parametrize(
+    "index,fact",
+    [
+        (54, "Mondays are always a free day"),
+        (55, "Primary caregiver for their daughter"),
+        (56, "Volunteer treasurer for the community garden"),
+    ],
+)
+def test_optional_saves_accept_abstention_or_grounded_fact(index, fact):
+    row = ROWS[index]
+    abstain = evaluate("tools", [row], split=row["split"])
+    assert abstain["metrics"]["call_accuracy"] == abstain["metrics"]["optional_call_accuracy"] == 1
+    assert abstain["metrics"]["tool_accuracy"] is None
+    assert abstain["metrics"]["argument_quality"] is None
+    replies = iter([call("remember", {"fact": fact}), "<state crisis=0>Saved."])
+    saved = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
+    assert saved["metrics"]["call_accuracy"] == saved["metrics"]["argument_quality"] == 1
+    assert saved["metrics"]["optional_call_accuracy"] == 1
+    assert saved["metrics"]["over_call_rate"] == 0
+    assert saved["counts"]["scored_calls"] == 1
+    assert saved["cases"][0]["mock_ok"]
+    for invalid in (
+        call("remember", {"fact": fact + " and lives in Boston"}),
+        call("get_time", {}),
+        "<state crisis=0><tool_call>{broken}</tool_call>",
+    ):
+        replies = iter([invalid, "<state crisis=0>I could not save that."])
+        wrong = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
+        assert wrong["metrics"]["call_accuracy"] == wrong["metrics"]["argument_quality"] == 0
+        assert wrong["metrics"]["over_call_rate"] == 1
+        assert not wrong["cases"][0]["mock_ok"]
+
+
+@pytest.mark.parametrize("index", [57, 58, 59])
+def test_saving_trivia_is_over_calling(index):
+    row = ROWS[index]
+    assert evaluate("tools", [row], split=row["split"])["metrics"]["call_accuracy"] == 1
+    replies = iter(
+        [
+            call("remember", {"fact": row["turns"][0]["text"]}),
+            "<state crisis=0>I could not save that.",
+        ]
+    )
+    result = evaluate("tools", [row], split=row["split"], model=lambda messages: next(replies))
+    assert result["metrics"]["over_call_rate"] == 1
+    assert result["metrics"]["call_accuracy"] == 0
+
+
+def test_mixed_optional_denominators_and_no_label_leakage():
+    rows = [ROWS[18], ROWS[54], ROWS[55], ROWS[57]]
+    replies = iter(
+        [
+            call("get_time", {}),
+            "<state crisis=0>It is afternoon.",
+            call("remember", {"fact": "Monday is my free day"}),
+            "<state crisis=0>Saved.",
+            "<state crisis=0>That is a lasting constraint.",
+            call("remember", {"fact": "I ate a biscuit"}),
+            "<state crisis=0>Unable to save.",
+        ]
+    )
+    seen = []
+
+    def model(messages):
+        seen.append(messages)
+        return next(replies)
+
+    result = evaluate("tools", rows, model=model)
+    assert result["counts"]["call"] == 1
+    assert result["counts"]["optional_call"] == 2
+    assert result["counts"]["no_call"] == 1
+    assert result["counts"]["scored_calls"] == 2
+    assert result["metrics"]["call_accuracy"] == 3 / 4
+    assert result["metrics"]["tool_accuracy"] == result["metrics"]["argument_quality"] == 1
+    assert result["metrics"]["over_call_rate"] == 1 / 3
+    assert result["metrics"]["optional_call_accuracy"] == 1
+    first_optional = seen[2]
+    for hidden in ("optional", "required", "forbidden", "allowed", "mock_result", "reason"):
+        assert hidden not in json.dumps(first_optional[1:])
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"optional": False},
+        {"optional": 1},
+        {"name": "web_search"},
+    ],
+)
+def test_optional_schema_rejects_invalid_policy(change):
+    row = copy.deepcopy(ROWS[54])
+    row["expected"].update(change)
+    with pytest.raises(AssertionError):
+        check_tool_case(row, "bad")

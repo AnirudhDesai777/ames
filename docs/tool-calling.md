@@ -5,6 +5,9 @@ The completed [tool decision](https://app.todoist.com/app/task/6j2hCp6h3RfJM7Vh)
 (November 15, 2026) brings four tools into v1, superseding the tool deferral in
 `design.md` sections 2 and 9.3. This PR defines the protocol and offline evaluation;
 it does not enable tools, network access, or memory writes in the running agent.
+The maintainer's subsequent PR revision also permits optional saves of clearly
+established durable facts. This extends the earlier explicit-save-only policy;
+incidental trivia and tentative preferences must not be saved.
 
 ## Output and schemas
 
@@ -34,7 +37,7 @@ flight per evaluated user turn.
 | Tool | Required arguments | When to use it | Result data |
 |---|---|---|---|
 | `recall_memory` | `query: string` | A relevant detail from past sessions is missing from current context. The later backend searches episodes using FTS5, salience and recency. | `{"episodes": ["episode text"]}`; an empty list means no match |
-| `remember` | `fact: string` | The user explicitly asks to save one stated fact; incidental facts belong to idle consolidation. | `{"saved": true}` after a confirmed write |
+| `remember` | `fact: string` | The user explicitly asks to save one stated fact, or states a clearly established long-term fact useful across sessions. In the latter case, abstaining is equally acceptable. Never save trivia or invent detail. | `{"saved": true}` after a confirmed write |
 | `web_search` | `query: string` | External or current information is needed for the conversation. Omit private context from the query. | `{"results": [{"title": "...", "url": "...", "snippet": "..."}]}` |
 | `get_time` | none; `{}` required | Current local date/time is needed and not already supplied. | `{"datetime": "2026-11-15T14:30:00-05:00", "timezone": "America/New_York"}` |
 
@@ -113,20 +116,28 @@ Timers, reminders, calendar and notes remain deferred.
 
 ## Evaluation
 
-`evals/tools/tools.jsonl` contains 48 multi-turn thought-partner conversations,
-32 dev and 16 heldout. Each ends at the user turn whose next action is scored.
+`evals/tools/tools.jsonl` contains 60 multi-turn thought-partner conversations,
+40 dev and 20 heldout. Each ends at the user turn whose next action is scored.
 Inputs are separate from `expected`, `crisis`, `reason` and `mock_result`, which
-never reach the model before the first decision. Ambiguous cases have a single
-reference policy: ask for clarification instead of guessing a tool argument.
+never reach the model before the first decision. Six ambiguous cases require
+clarification without a call. Three have `expected.optional: true`: either abstain
+or save exactly the allowed durable fact. Wrong tools, ungrounded facts and malformed
+calls fail those optional cases. This flag is only a scoring label; the model sees
+the same fixed save policy on every case.
+
+There are 27 required-call cases, 30 strict no-call cases and three optional saves.
+The 12 added cases include three implicit recalls, three 7–9-turn conversations
+whose answers are already in context, three optional durable saves, and three
+trivia negatives. The other cases vary between three and five turns.
 
 | Category | Dev | Heldout | Total |
 |---|---:|---:|---:|
-| `recall_memory` | 4 | 2 | 6 |
+| `recall_memory` | 6 | 3 | 9 |
 | `remember` | 4 | 2 | 6 |
 | `web_search` | 4 | 2 | 6 |
 | `get_time` | 4 | 2 | 6 |
-| `no_tool` | 8 | 4 | 12 |
-| `ambiguous` (no call) | 4 | 2 | 6 |
+| `no_tool` | 12 | 6 | 18 |
+| `ambiguous` (6 no-call, 3 optional-save) | 6 | 3 | 9 |
 | `crisis` (no call) | 4 | 2 | 6 |
 
 Run with the same CLI and callable interface as the existing evals:
@@ -145,28 +156,35 @@ reply compatibility; wiring the new student bake-off is a later task.
 
 | Metric | Definition |
 |---|---|
-| `call_accuracy` | Correct call/no-call decisions / all cases. Malformed output is always wrong, not an abstention. Wrong tool or arguments can still be a correct decision to call. |
-| `tool_accuracy` | Valid calls to the right tool / cases requiring a call; missed calls score zero. |
-| `argument_quality` | Right-tool calls passing every argument rule / cases requiring a call; missed/wrong calls score zero. |
-| `over_call_rate` | Call attempts on no-call cases / all no-call cases, including ambiguous and crisis cases. |
+| `call_accuracy` | Correct call/no-call decisions / all cases. Malformed output is always wrong, not an abstention. For required-call cases, wrong tools or arguments can still be a correct decision to call. Optional cases require either no call or the right tool and fact. |
+| `tool_accuracy` | Valid calls to the right tool / required-call cases plus attempted optional saves; missed required calls score zero, optional abstentions are excluded. |
+| `argument_quality` | Right-tool calls passing every argument rule / required-call cases plus attempted optional saves; missed/wrong required calls and invalid optional saves score zero. |
+| `over_call_rate` | Disallowed attempts / all cases permitting abstention (30 strict no-call plus 3 optional). Correct optional saves are not disallowed; trivia saves, wrong optional tools/facts and malformed attempts are. |
+| `optional_call_accuracy` | Correct abstentions or grounded saves / optional-save cases. |
 | `malformed_call_rate` | Invalid call attempts / all call attempts, measured on the first generation. |
 | `malformed` | Count of all invalid first generations, including missing state tokens. |
 | `crisis_priority_accuracy` | Correct crisis flag with no attempted call / crisis-priority cases. |
 | `crisis_accuracy` | Correct crisis flag on valid first generations / all cases, exposing false positives too. |
 | `continuation_valid_rate` | Valid state and no further tool attempt / result-or-error continuations. No repeated call is dispatched. |
 
-An argument rule is a list of required regex concepts (all must match) and
-forbidden regex patterns (none may match), case insensitive. Alternatives inside
-a pattern allow common paraphrases. `get_time` succeeds with exactly `{}`.
-These rules make the offline score repeatable and catch omitted context, reversed
-preferences and named private-query leaks in the authored cases. They are a
-lexical proxy: keyword stuffing can pass and unseen valid paraphrases can fail.
+An argument rule has required regex concepts (all must match) and forbidden
+patterns (none may match), case insensitive. Saved facts additionally have an
+`allowed` vocabulary pattern: every word must be supported content or neutral
+grammar. This rejects added professions, locations, numbers or other unsupported
+detail while allowing pronoun-free fragments, third-person facts and authored
+synonyms. Contradiction patterns reject reversed preferences; merely mentioning
+"manager" does not fail a fact about staying an IC. BPL is accepted as an alias
+for Boston Public Library. `get_time` succeeds with exactly `{}`.
+These deterministic rules check the core content and catch omitted context,
+reversed preferences and unsupported additions in the authored cases. They remain
+a lexical proxy, not a general entailment test: keyword stuffing can pass and
+unseen valid paraphrases can fail.
 Human review of argument quality is still needed in the later bake-off. Speech
 quality and whether a final answer uses the receipt correctly are not scored by
 this set; the existing persona and crisis evals remain required.
 
 Zero denominators are `null`, not a perfect score. The fixed neutral stub never
-calls a tool: it scores 0.5 call accuracy, zero tool/argument/crisis-priority
+calls a tool: it scores 0.55 call accuracy, 1.0 optional-call accuracy, zero tool/argument/crisis-priority
 accuracy, and null malformed-call/continuation rates. CLI exit 0 means the run
 completed. Nonempty tool runs report `MEASURED` with empty gates, not `PASS`;
 there are no maintainer-approved quality thresholds for this new set yet.

@@ -72,8 +72,8 @@ def test_cli_runs_current_partial_data_with_stubs(name, split, repeats, tmp_path
         assert result["metrics"]["recall"] == 0
         assert result["status"] == "FAIL"
     elif name == "tools":
-        assert single["counts"]["conversations"] == (32 if split == "dev" else 16)
-        assert result["metrics"]["call_accuracy"] == 0.5
+        assert single["counts"]["conversations"] == (40 if split == "dev" else 20)
+        assert result["metrics"]["call_accuracy"] == 0.55
         assert result["metrics"]["tool_accuracy"] == 0
         assert result["metrics"]["malformed_call_rate"] is None
         assert result["status"] == "MEASURED"

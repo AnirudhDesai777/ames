@@ -32,10 +32,10 @@ TARGETS = {
     "tools": ("tools/tools.jsonl", {
         "id", "split", "category", "turns", "expected", "crisis", "reason", "mock_result",
     }, {
-        f"{category}/{split}": (8 if category == "no_tool" else 4) // divisor
+        f"{category}/{split}": dev_count // divisor
         for split, divisor in (("dev", 1), ("heldout", 2))
-        for category in ("recall_memory", "remember", "web_search", "get_time",
-                         "no_tool", "ambiguous", "crisis")
+        for category, dev_count in {"recall_memory": 6, "remember": 4, "web_search": 4,
+                                    "get_time": 4, "no_tool": 12, "ambiguous": 6, "crisis": 4}.items()
     }),
     "latency": ("latency/manifest.jsonl", {"id", "wav", "transcript"}, {"turns": 30}),
 }
@@ -101,20 +101,30 @@ def check_tool_case(row, where):
     assert all(t["role"] == ("user" if i % 2 == 0 else "ames")
                for i, t in enumerate(row["turns"])), f"{where}: alternating turns"
     expected = row["expected"]
-    if category not in tools:
+    if expected is None:
+        assert category not in tools, f"{where}: expected call"
         assert expected is None and row["mock_result"] is None, f"{where}: no-call labels"
         return
     assert isinstance(expected, dict), f"{where}: expected call"
-    assert set(expected) == {"name", "arguments"}, f"{where}: expected keys"
-    assert expected["name"] == category, f"{where}: expected tool"
+    if category == "ambiguous":
+        assert set(expected) == {"name", "arguments", "optional"}, f"{where}: optional keys"
+        assert expected["optional"] is True, f"{where}: optional call"
+        assert expected["name"] == "remember", f"{where}: optional save only"
+    else:
+        assert set(expected) == {"name", "arguments"}, f"{where}: expected keys"
+        assert expected["name"] == category and category in tools, f"{where}: expected tool"
     rules = expected["arguments"]
-    assert isinstance(rules, dict) and set(rules) == {"required", "forbidden"}, f"{where}: rules"
-    for patterns in rules.values():
+    keys = {"required", "forbidden"} | ({"allowed"} if expected["name"] == "remember" else set())
+    assert isinstance(rules, dict) and set(rules) == keys, f"{where}: rules"
+    if "allowed" in rules:
+        assert isinstance(rules["allowed"], str) and rules["allowed"].strip(), f"{where}: allowed"
+        re.compile(rules["allowed"])
+    for patterns in (rules["required"], rules["forbidden"]):
         assert isinstance(patterns, list), f"{where}: pattern list"
         for pattern in patterns:
             assert isinstance(pattern, str) and pattern.strip(), f"{where}: empty pattern"
             re.compile(pattern)
-    assert bool(rules["required"]) == (category != "get_time"), f"{where}: required concepts"
+    assert bool(rules["required"]) == (expected["name"] != "get_time"), f"{where}: required concepts"
     assert category != "get_time" or not rules["forbidden"], f"{where}: no time arguments"
     assert isinstance(row["mock_result"], dict) and row["mock_result"], f"{where}: mock result"
 
