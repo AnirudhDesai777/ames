@@ -23,11 +23,13 @@ function browser(t, { status = 200, permissionError, gather = false, permission,
     Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
   });
   let peer;
+  const constraints = [];
   const track = { enabled: true, stop: t.mock.fn() };
   const stream = { getAudioTracks: () => [track], getTracks: () => [track] };
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
-    value: { mediaDevices: { getUserMedia: async () => {
+    value: { mediaDevices: { getUserMedia: async (wanted) => {
+      constraints.push(wanted);
       if (permissionError) throw permissionError;
       return permission ?? stream;
     } } },
@@ -63,7 +65,7 @@ function browser(t, { status = 200, permissionError, gather = false, permission,
     return { ok: status === 200, status, text: async () => "The voice pipeline could not start.",
       json: async () => ({ type: "answer", sdp: "answer-sdp" }) };
   });
-  return { get peer() { return peer; }, track, stream, fetch, audio: { srcObject: null } };
+  return { get peer() { return peer; }, track, stream, fetch, constraints, audio: { srcObject: null } };
 }
 
 for (const gather of [false, true]) {
@@ -292,4 +294,11 @@ test("setVoice sends one set_voice message over the open data channel and nothin
   session.close();
   session.setVoice("female");
   assert.equal(setup.peer.channel.send.mock.callCount(), 1);
+});
+test("the microphone asks for echo cancellation, noise suppression and auto gain", async (t) => {
+  const setup = browser(t);
+  const session = startSession("token", setup.audio, () => {}, () => {});
+  await session.ready;
+  assert.deepEqual(setup.constraints, [{ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }]);
+  session.close();
 });
