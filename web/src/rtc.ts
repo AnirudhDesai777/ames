@@ -1,15 +1,17 @@
 export type Speaker = "user" | "ames" | "none";
 export type SessionEvent =
-  | { type: "transcript"; role: "user" | "ames"; text: string; final: boolean; turn_id: number }
+  | { type: "transcript"; role: "user" | "ames"; text: string; final: boolean; turn_id: number; rateable?: boolean }
   | { type: "speaking"; who: Speaker }
   | { type: "notice"; code: "session_replaced" | "session_ended" | "server_error"; text: string };
 
 export type Voice = "female" | "male";
+export type Rating = "good" | "bad";
 export type Session = {
   ready: Promise<void>;
   close: () => void;
   setMuted: (muted: boolean) => void;
   setVoice: (voice: Voice) => void;
+  rate: (turnId: number, rating: Rating) => void;
 };
 
 export function peerConfiguration(): RTCConfiguration {
@@ -142,5 +144,6 @@ export function startSession(
     ready: connect(), close,
     setMuted: (muted) => { stream?.getAudioTracks().forEach((track) => { track.enabled = !muted; }); },
     setVoice: (voice) => { if (!closed && channel.readyState === "open") channel.send(JSON.stringify({ type: "set_voice", voice })); },
+    rate: (turnId, rating) => { if (!closed && channel.readyState === "open") channel.send(JSON.stringify({ type: "rate", turn_id: turnId, rating })); },
   };
 }

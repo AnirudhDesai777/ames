@@ -359,3 +359,16 @@ footer {
 		transition: none;
 	}
 }
+.rating {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+}
+#transcript .rating button {
+	min-height: 32px;
+	padding: 4px 12px;
+	font-size: 12px;
+}
+#transcript .rating button[aria-pressed="true"] {
+	background: #e3d5c4;
+}

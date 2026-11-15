@@ -15,7 +15,7 @@ function setup({ token = "test-token", seen = true, storage, browser, pending = 
     let resolve;
     let reject;
     const ready = new Promise((yes, no) => { resolve = yes; reject = no; });
-    const session = { ready, close: test.mock.fn(), setMuted: test.mock.fn(), setVoice: test.mock.fn(), receive, disconnected, resolve, reject, credential, audio };
+    const session = { ready, close: test.mock.fn(), setMuted: test.mock.fn(), setVoice: test.mock.fn(), rate: test.mock.fn(), receive, disconnected, resolve, reject, credential, audio };
     sessions.push(session);
     if (error) reject(error);
     else if (!pending) resolve();
@@ -313,4 +313,21 @@ test("a saved voice is restored, and unreadable or invalid storage falls back to
   assert.equal(voiceButton(broken, "female").getAttribute("aria-pressed"), "true");
   voiceButton(broken, "male").click();
   assert.equal(voiceButton(broken, "male").getAttribute("aria-pressed"), "true");
+});
+
+test("rating buttons appear only on finished rateable replies and send the last choice", async () => {
+  const ui = await connected();
+  ui.receive({ type: "transcript", role: "ames", text: "Plain", final: true, turn_id: 1 });
+  ui.receive({ type: "transcript", role: "ames", text: "Partial", final: false, turn_id: 2, rateable: true });
+  assert.equal(ui.element("transcript").querySelectorAll(".rating").length, 0);
+  ui.receive({ type: "transcript", role: "ames", text: "Done", final: true, turn_id: 2, rateable: true });
+  const [good, bad] = ui.element("transcript").querySelectorAll(".rating button");
+  assert.deepEqual([good.textContent, bad.textContent], ["Good", "Bad"]);
+  good.click();
+  bad.click();
+  assert.deepEqual(ui.sessions[0].rate.mock.calls.map((call) => call.arguments), [[2, "good"], [2, "bad"]]);
+  assert.deepEqual([good.getAttribute("aria-pressed"), bad.getAttribute("aria-pressed")], ["false", "true"]);
+  ui.click("end");
+  good.click();
+  assert.equal(ui.sessions[0].rate.mock.calls.length, 2);
 });

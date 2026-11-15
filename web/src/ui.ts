@@ -1,4 +1,4 @@
-import type { Session, SessionEvent, Speaker, startSession, Voice } from "./rtc";
+import type { Rating, Session, SessionEvent, Speaker, startSession, Voice } from "./rtc";
 
 export function mountConversation(
   document: Document,
@@ -67,6 +67,26 @@ export function mountConversation(
     notice.dataset.code = code;
     notice.hidden = false;
   };
+  const ratingButtons = (turnId: number) => {
+    const group = document.createElement("div");
+    group.className = "rating";
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", "Rate this reply");
+    const buttons = (["good", "bad"] as Rating[]).map((rating) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = rating === "good" ? "Good" : "Bad";
+      button.setAttribute("aria-pressed", "false");
+      button.addEventListener("click", () => {
+        if (phase !== "connected") return;
+        session?.rate(turnId, rating);
+        for (const other of buttons) other.setAttribute("aria-pressed", String(other === button));
+      });
+      return button;
+    });
+    group.append(...buttons);
+    return group;
+  };
   const receive = (event: SessionEvent) => {
     switch (event.type) {
       case "speaking":
@@ -90,6 +110,7 @@ export function mountConversation(
           turns.set(key, turn);
         }
         turn.text.textContent = event.text;
+        if (event.final && event.rateable) turn.row.append(ratingButtons(event.turn_id));
         turn.final = event.final;
         turn.row.dataset.final = String(event.final);
         empty.hidden = true;
