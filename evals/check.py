@@ -5,6 +5,7 @@ Exits non-zero on a schema error. A set that is short of its target count is
 reported as pending, so partly authored sets can be checked before the freeze.
 """
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -27,6 +28,14 @@ TARGETS = {
     }),
     "memory": ("memory/memory.jsonl", {"id", "split", "sessions", "gold_facts", "questions"}, {
         "conversations": 9, "questions": 72, "dev": 3, "heldout": 6,
+    }),
+    "tools": ("tools/tools.jsonl", {
+        "id", "split", "category", "turns", "expected", "crisis", "reason", "mock_result",
+    }, {
+        f"{category}/{split}": (8 if category == "no_tool" else 4) // divisor
+        for split, divisor in (("dev", 1), ("heldout", 2))
+        for category in ("recall_memory", "remember", "web_search", "get_time",
+                         "no_tool", "ambiguous", "crisis")
     }),
     "latency": ("latency/manifest.jsonl", {"id", "wav", "transcript"}, {"turns": 30}),
 }
@@ -64,7 +73,10 @@ def count(name, rows):
             c["turns"] += 1
             continue
         check_turns(r["turns"], where)
-        if name == "persona":
+        if name == "tools":
+            check_tool_case(r, where)
+            c[f"{r['category']}/{r['split']}"] += 1
+        elif name == "persona":
             assert r["category"] in {"thought", "companion", "edgy"}, f"{where}: category"
             c[r["split"]] += 1
             if r["category"] == "edgy":
@@ -76,6 +88,35 @@ def count(name, rows):
             assert r["rule"] in {"G2", "G3", "G4"}, f"{where}: rule"
             c[f"{r['rule']}/{r['split']}"] += 1
     return c
+
+
+def check_tool_case(row, where):
+    tools = {"recall_memory", "remember", "web_search", "get_time"}
+    category = row["category"]
+    assert category in tools | {"no_tool", "ambiguous", "crisis"}, f"{where}: category"
+    assert type(row["crisis"]) is bool, f"{where}: crisis boolean"
+    assert row["crisis"] == (category == "crisis"), f"{where}: crisis label"
+    assert isinstance(row["reason"], str) and row["reason"].strip(), f"{where}: reason"
+    assert len(row["turns"]) >= 3, f"{where}: multi-turn required"
+    assert all(t["role"] == ("user" if i % 2 == 0 else "ames")
+               for i, t in enumerate(row["turns"])), f"{where}: alternating turns"
+    expected = row["expected"]
+    if category not in tools:
+        assert expected is None and row["mock_result"] is None, f"{where}: no-call labels"
+        return
+    assert isinstance(expected, dict), f"{where}: expected call"
+    assert set(expected) == {"name", "arguments"}, f"{where}: expected keys"
+    assert expected["name"] == category, f"{where}: expected tool"
+    rules = expected["arguments"]
+    assert isinstance(rules, dict) and set(rules) == {"required", "forbidden"}, f"{where}: rules"
+    for patterns in rules.values():
+        assert isinstance(patterns, list), f"{where}: pattern list"
+        for pattern in patterns:
+            assert isinstance(pattern, str) and pattern.strip(), f"{where}: empty pattern"
+            re.compile(pattern)
+    assert bool(rules["required"]) == (category != "get_time"), f"{where}: required concepts"
+    assert category != "get_time" or not rules["forbidden"], f"{where}: no time arguments"
+    assert isinstance(row["mock_result"], dict) and row["mock_result"], f"{where}: mock result"
 
 
 def main():

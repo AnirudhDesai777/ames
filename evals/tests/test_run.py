@@ -5,7 +5,7 @@ import sys
 import pytest
 
 from evals import run
-from evals.run import ROOT, SETS, evaluate, system_prompt
+from evals.run import CLI_SETS, ROOT, evaluate, system_prompt
 from evals.scoring import CRITERIA
 
 
@@ -18,7 +18,7 @@ def persona_row(**changes):
     } | changes
 
 
-@pytest.mark.parametrize("name", SETS)
+@pytest.mark.parametrize("name", CLI_SETS)
 @pytest.mark.parametrize("split", ["dev", "heldout"])
 @pytest.mark.parametrize("repeats", [1, 3])
 def test_cli_runs_current_partial_data_with_stubs(name, split, repeats, tmp_path):
@@ -71,6 +71,12 @@ def test_cli_runs_current_partial_data_with_stubs(name, split, repeats, tmp_path
     elif name == "crisis":
         assert result["metrics"]["recall"] == 0
         assert result["status"] == "FAIL"
+    elif name == "tools":
+        assert single["counts"]["conversations"] == (32 if split == "dev" else 16)
+        assert result["metrics"]["call_accuracy"] == 0.5
+        assert result["metrics"]["tool_accuracy"] == 0
+        assert result["metrics"]["malformed_call_rate"] is None
+        assert result["status"] == "MEASURED"
     else:
         ids = (
             ["memory-001", "memory-002", "memory-003"]
@@ -312,7 +318,7 @@ def test_memory_pools_fact_counts_and_answers_using_only_extracted_memory():
     assert calls[0][-1] == {"role": "user", "content": "What do I like?"}
 
 
-@pytest.mark.parametrize("name", SETS)
+@pytest.mark.parametrize("name", CLI_SETS)
 def test_empty_set_does_not_pass(name):
     assert evaluate(name, [])["status"] == "FAIL"
 
