@@ -93,6 +93,24 @@ AMES_TRACE=1 LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... \
 `localhost`, `127.0.0.1` or `::1`; anything else, or a missing key, stops startup with
 a message. Create the keys in the Langfuse project settings; never commit them.
 
+## Turn log (development only)
+
+With `AMES_TURN_LOG=1` each session writes one JSONL file under
+`~/Library/Application Support/Ames/turns/` (directory 0700, file 0600). It is off by
+default. When a reply finishes, a `turn` line records the user's words, the reply as
+spoken, whether it was interrupted, the model directory name, a prefix of the system
+prompt hash, the TTS voice, and stage latencies in ms measured from the VAD stop. A
+stage that did not happen is left out. Like tracing, the file holds conversation text,
+a dev-only exception to design 9.2.
+
+With the flag on, each finished reply in the web UI shows Good and Bad buttons. A
+click appends a `rating` line; the last rating for a turn wins. The server ignores
+ratings for unknown turns and any rating other than `good` or `bad`.
+
+```sh
+AMES_TURN_LOG=1 uv run --locked python -m server.app
+```
+
 ## Recorded cascade and latency
 
 `server.cascade` uses local Parakeet TDT 0.6B v2 MLX transcription,

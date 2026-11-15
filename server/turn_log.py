@@ -1,0 +1,90 @@
+"""Opt-in per-session turn log for reviewing conversations and collecting ratings."""
+
+import hashlib
+import json
+import os
+from datetime import UTC, datetime
+from pathlib import Path
+
+from pipecat.frames.frames import UserStoppedSpeakingFrame, VADUserStoppedSpeakingFrame
+from pipecat.processors.frame_processor import FrameDirection
+
+from server.latency import STAGES, LatencyObserver
+from server.prompt import load_system_prompt
+
+RATINGS = {"good", "bad"}
+
+
+class TurnTimer(LatencyObserver):
+    """Times from the VAD stop: the live pipeline may emit no turn-level stop, or a later one."""
+
+    async def on_push_frame(self, data):
+        frame = data.frame
+        if isinstance(frame, VADUserStoppedSpeakingFrame):
+            if data.direction == FrameDirection.DOWNSTREAM and data.first_push:
+                self.timestamps = {"turn_end": data.timestamp}
+        elif not isinstance(frame, UserStoppedSpeakingFrame):
+            await super().on_push_frame(data)
+
+
+class TurnLog:
+    def __init__(self, data_dir: Path, session_id: str, voice=lambda: None):
+        directory = data_dir / "turns"
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        directory.chmod(0o700)
+        started = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        self.path = directory / f"{started}-{session_id}.jsonl"
+        self.path.touch(mode=0o600)
+        self.session_id = session_id
+        self.voice = voice
+        self.model = Path(os.environ.get("AMES_LLM_MODEL", "stub")).name
+        self.prompt = hashlib.sha256(load_system_prompt().encode()).hexdigest()[:12]
+        self.observer = None
+        self.turns = set()
+
+    def append(self, record: dict):
+        with self.path.open("a", encoding="utf-8") as file:
+            file.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def watch(self, output):
+        self.observer = TurnTimer(output)
+        return self.observer
+
+    def latency(self):
+        stamps = self.observer.timestamps if self.observer else {}
+        return {
+            name: round((stamps[end] - stamps[start]) / 1_000_000)
+            for name, (start, end) in STAGES.items()
+            if start in stamps and end in stamps and stamps[end] >= stamps[start]
+        }
+
+    def turn(self, turn_id: int, user: str, ames: str, interrupted: bool):
+        self.turns.add(turn_id)
+        self.append(
+            dict(
+                type="turn",
+                session=self.session_id,
+                turn_id=turn_id,
+                at=datetime.now(UTC).isoformat(timespec="seconds"),
+                user=user,
+                ames=ames,
+                interrupted=interrupted,
+                model=self.model,
+                prompt=self.prompt,
+                voice=self.voice(),
+                latency_ms=self.latency(),
+            )
+        )
+
+    def rate(self, turn_id, rating):
+        """The client is untrusted: only ratings for logged turns are kept; the last one wins."""
+        if type(turn_id) is int and turn_id in self.turns and rating in RATINGS:
+            self.append(
+                dict(
+                    type="rating",
+                    session=self.session_id,
+                    turn_id=turn_id,
+                    at=datetime.now(UTC).isoformat(timespec="seconds"),
+                    rating=rating,
+                )
+            )
