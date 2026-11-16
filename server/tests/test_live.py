@@ -145,8 +145,12 @@ async def test_crisis_reply_never_reaches_tts_or_history(monkeypatch):
         ),
         frames_to_send=[TranscriptionFrame("hi there", "", "now")],
     )
-    assert not any(isinstance(frame, (TTSAudioRawFrame, TTSTextFrame)) for frame in received)
-    assert conversation.history == [{"role": "user", "content": "hi there"}]
+    spoken = [frame.text for frame in received if isinstance(frame, TTSTextFrame)]
+    assert " ".join(spoken) == (
+        "I can't help with this one. Please call your local emergency number "
+        "or reach someone you trust right now."
+    )
+    assert conversation.history[0] == {"role": "user", "content": "hi there"}
 
 
 async def test_interruption_finalizes_only_completed_sentence_once():

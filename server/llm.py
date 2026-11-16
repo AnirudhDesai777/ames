@@ -44,7 +44,7 @@ class MLXLanguageModel:
     async def assemble(self, history, user_text):
         def assemble():
             return PromptAssembler(
-                lambda text: len(self.tokenizer.encode(text, add_special_tokens=False))
+                lambda text: len(self.tokenizer.encode(text, add_special_tokens=False)), tools=True
             ).assemble(history, user_text, memory_facts="")
 
         return await asyncio.get_running_loop().run_in_executor(self.executor, assemble)
@@ -152,7 +152,7 @@ class StubLanguageModel:
         pass
 
     async def assemble(self, history, user_text):
-        return PromptAssembler(lambda text: len(text.split())).assemble(
+        return PromptAssembler(lambda text: len(text.split()), tools=True).assemble(
             history, user_text, memory_facts=""
         )
 
