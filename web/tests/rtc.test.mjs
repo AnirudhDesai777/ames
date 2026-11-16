@@ -196,6 +196,7 @@ test("all server event types reach the client and server errors keep the session
   const expected = [
     { type: "transcript", role: "user", text: "Hello", final: false, turn_id: 1 },
     { type: "speaking", who: "ames" },
+    { type: "search", active: true },
     { type: "notice", code: "server_error", text: "Please try that again." },
   ];
   expected.forEach((event) => { send(setup, event); });
@@ -213,6 +214,7 @@ test("invalid messages are ignored without breaking the next event", async (t) =
     setup.peer.channel.dispatchEvent(new MessageEvent("message", { data: raw }));
   }
   for (const data of [null, {}, { type: "speaking", who: "unknown" },
+    { type: "search", active: "yes" },
     { type: "state", mood: "neutral", turn_id: 1 },
     { type: "transcript", role: "ames", text: "Hi", final: "yes", turn_id: 1 },
     { type: "transcript", role: "ames", text: "Hi", final: true, turn_id: -1 },

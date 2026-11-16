@@ -23,7 +23,7 @@ LITERAL_PREDICATES = {"scheduled_on", "feels", "likes", "dislikes"}
 SCHEMA = """
 BEGIN;
 CREATE TABLE schema_version (version INTEGER NOT NULL);
-INSERT INTO schema_version VALUES (1);
+INSERT INTO schema_version VALUES (2);
 CREATE TABLE turn (
     id INTEGER PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -57,6 +57,14 @@ CREATE TABLE relation (
 );
 CREATE TABLE delete_epoch (n INTEGER NOT NULL);
 INSERT INTO delete_epoch VALUES (0);
+CREATE TABLE episode (id INTEGER PRIMARY KEY, text TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE VIRTUAL TABLE episode_fts USING fts5(text, content='episode', content_rowid='id');
+CREATE TRIGGER episode_insert AFTER INSERT ON episode BEGIN
+    INSERT INTO episode_fts(rowid, text) VALUES (new.id, new.text);
+END;
+CREATE TRIGGER episode_delete AFTER DELETE ON episode BEGIN
+    INSERT INTO episode_fts(episode_fts, rowid, text) VALUES ('delete', old.id, old.text);
+END;
 COMMIT;
 """
 
@@ -94,7 +102,26 @@ class Repository:
                 self.connection.executescript(SCHEMA)
             else:
                 versions = self.connection.execute("SELECT version FROM schema_version").fetchall()
-                if [row[0] for row in versions] != [1]:
+                if [row[0] for row in versions] == [1]:
+                    self.connection.executescript("""
+                        BEGIN;
+                        CREATE TABLE episode (
+                            id INTEGER PRIMARY KEY, text TEXT NOT NULL, created_at TEXT NOT NULL
+                        );
+                        CREATE VIRTUAL TABLE episode_fts USING fts5(
+                            text, content='episode', content_rowid='id'
+                        );
+                        CREATE TRIGGER episode_insert AFTER INSERT ON episode BEGIN
+                            INSERT INTO episode_fts(rowid, text) VALUES (new.id, new.text);
+                        END;
+                        CREATE TRIGGER episode_delete AFTER DELETE ON episode BEGIN
+                            INSERT INTO episode_fts(episode_fts, rowid, text)
+                            VALUES ('delete', old.id, old.text);
+                        END;
+                        UPDATE schema_version SET version = 2;
+                        COMMIT;
+                        """)
+                elif [row[0] for row in versions] != [2]:
                     raise ValueError("Unsupported memory schema version")
         except Exception:
             self.connection.close()
@@ -102,6 +129,45 @@ class Repository:
 
     def close(self) -> None:
         self.connection.close()
+
+    def remember(self, fact: str) -> None:
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO episode(text, created_at) VALUES (?, ?)", (nonempty(fact), now())
+            )
+
+    def list_episodes(self) -> list[sqlite3.Row]:
+        return self.connection.execute(
+            "SELECT id, text, created_at FROM episode ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+
+    def delete_episode(self, episode_id: int) -> bool:
+        with self.connection:
+            deleted = self.connection.execute(
+                "DELETE FROM episode WHERE id = ?", (episode_id,)
+            ).rowcount
+            if deleted:
+                self.connection.execute("UPDATE delete_epoch SET n = n + 1")
+            return bool(deleted)
+
+    def recall(self, query: str) -> list[str]:
+        # Treat query words as FTS literals, never as user-supplied FTS syntax.
+        import re
+
+        words = re.findall(r"\w+", nonempty(query), re.UNICODE)
+        if not words:
+            return []
+        match = " OR ".join('"' + word.replace('"', '""') + '"' for word in words)
+        return [
+            row[0]
+            for row in self.connection.execute(
+                "SELECT episode.text FROM episode_fts "
+                "JOIN episode ON episode.id = episode_fts.rowid "
+                "WHERE episode_fts MATCH ? "
+                "ORDER BY bm25(episode_fts), episode.created_at DESC LIMIT 3",
+                (match,),
+            )
+        ]
 
     def add_entity(self, entity_type: str, name: str = "") -> int:
         with self.connection:
@@ -217,6 +283,7 @@ class Repository:
 
     def delete_everything_in_transaction(self) -> None:
         self.connection.execute("DELETE FROM turn")
+        self.connection.execute("DELETE FROM episode")
         self.connection.execute("DELETE FROM relation")
         self.connection.execute("DELETE FROM alias")
         self.connection.execute("DELETE FROM entity WHERE id <> 1")

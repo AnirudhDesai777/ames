@@ -17,8 +17,12 @@ def load_system_prompt() -> str:
 
 
 class PromptAssembler:
-    def __init__(self, count_tokens: Callable[[str], int]):
+    def __init__(self, count_tokens: Callable[[str], int], *, tools: bool = False):
         self.system_prompt = load_system_prompt()
+        if tools:
+            from server.tool_calls import TOOL_INSTRUCTIONS
+
+            self.system_prompt += "\n\n" + TOOL_INSTRUCTIONS
         self.count_tokens = count_tokens
 
     def assemble(

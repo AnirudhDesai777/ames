@@ -18,6 +18,8 @@ from server.cascade import StubTranscription, ToneTTS, log_errors, model_service
 from server.echo import echo_connection
 from server.events import Events
 from server.live import Conversation, build_live
+from server.memory.repository import Repository
+from server.tools import search_enabled, set_search_enabled
 from server.turn_log import TurnLog
 
 HOSTS = {"127.0.0.1:8765", "localhost:8765"}
@@ -226,12 +228,59 @@ def create_app(token: str, web_root: Path = WEB_ROOT) -> web.Application:
         log.rate(body.get("turn_id"), body.get("rating"))
         return web.Response(status=204)
 
+    async def search_setting(request):
+        if request.method == "GET":
+            return web.json_response({"enabled": search_enabled()})
+        try:
+            body = await request.json()
+        except (ValueError, UnicodeDecodeError):
+            raise web.HTTPBadRequest(text="Invalid search setting") from None
+        if (
+            not isinstance(body, dict)
+            or set(body) != {"enabled"}
+            or not isinstance(body["enabled"], bool)
+        ):
+            raise web.HTTPBadRequest(text="Invalid search setting")
+        try:
+            set_search_enabled(body["enabled"])
+        except OSError:
+            raise web.HTTPInternalServerError(text="Could not save search setting") from None
+        return web.json_response({"enabled": body["enabled"]})
+
+    async def list_memories(request):
+        store = Repository(DATA_DIR)
+        try:
+            facts = [dict(row) for row in store.list_episodes()]
+        finally:
+            store.close()
+        return web.json_response({"facts": facts}, headers={"Cache-Control": "no-store"})
+
+    async def delete_memory(request):
+        try:
+            episode_id = int(request.match_info["id"])
+        except ValueError:
+            raise web.HTTPNotFound() from None
+        if not 0 < episode_id < 2**63:
+            raise web.HTTPNotFound()
+        store = Repository(DATA_DIR)
+        try:
+            deleted = store.delete_episode(episode_id)
+        finally:
+            store.close()
+        if not deleted:
+            raise web.HTTPNotFound()
+        return web.Response(status=204)
+
     app = web.Application(middlewares=[authenticate])
     app.cleanup_ctx.append(lifecycle)
     app.router.add_get("/", index)
     app.router.add_get("/api/health", health)
     app.router.add_post("/api/offer", offer)
     app.router.add_post("/api/rate", rate)
+    app.router.add_get("/api/search", search_setting)
+    app.router.add_put("/api/search", search_setting)
+    app.router.add_get("/api/memories", list_memories)
+    app.router.add_delete("/api/memories/{id:\\d+}", delete_memory)
     if (web_root / "assets").is_dir():
         app.router.add_static("/assets/", web_root / "assets")
     return app
