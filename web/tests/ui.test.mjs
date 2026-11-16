@@ -315,6 +315,100 @@ test("a saved voice is restored, and unreadable or invalid storage falls back to
   assert.equal(voiceButton(broken, "male").getAttribute("aria-pressed"), "true");
 });
 
+test("web search starts off, persists on the server, and shows network disclosure and activity", async () => {
+  let enabled = false;
+  const requests = [];
+  const fetch = async (url, options) => {
+    requests.push([url, options]);
+    if (url === "/api/search" && options.method === "PUT") {
+      enabled = JSON.parse(options.body).enabled;
+      return { ok: true };
+    }
+    return { ok: true, json: async () => ({ enabled }) };
+  };
+  const ui = setup({ browser: { localStorage: { getItem: () => "true" }, fetch } });
+  assert.equal(ui.element("search-toggle").disabled, true);
+  await tick();
+  assert.equal(ui.element("search-toggle").getAttribute("aria-pressed"), "false");
+  assert.match(ui.element("search-description").textContent, /stay on your Mac/);
+  ui.click("search-toggle");
+  await tick();
+  assert.equal(ui.element("search-toggle").getAttribute("aria-pressed"), "true");
+  assert.match(ui.element("search-description").textContent, /may leave your Mac/);
+  assert.deepEqual(requests.at(-1), ["/api/search", {
+    method: "PUT", headers: { "X-Ames-Token": "test-token", "Content-Type": "application/json" },
+    body: '{"enabled":true}',
+  }]);
+  const again = setup({ browser: { localStorage: { getItem: () => "true" }, fetch } });
+  await tick();
+  assert.equal(again.element("search-toggle").getAttribute("aria-pressed"), "true");
+  ui.click("connect");
+  await tick();
+  ui.receive({ type: "search", active: true });
+  assert.equal(ui.element("search-activity").hidden, false);
+  assert.match(ui.element("search-activity").textContent, /Searching the web/);
+  ui.receive({ type: "search", active: false });
+  assert.equal(ui.element("search-activity").hidden, true);
+  ui.click("search-toggle");
+  await tick();
+  assert.equal(enabled, false);
+  assert.equal(ui.element("search-toggle").getAttribute("aria-pressed"), "false");
+});
+
+test("failed search setting change keeps the previous state visible", async () => {
+  const fetch = async (url, options) => url === "/api/search" && options.method === "PUT"
+    ? { ok: false } : { ok: true, json: async () => ({ enabled: false }) };
+  const ui = setup({ browser: { localStorage: { getItem: () => "true" }, fetch } });
+  await tick();
+  ui.click("search-toggle");
+  await tick();
+  assert.equal(ui.element("search-toggle").getAttribute("aria-pressed"), "false");
+  assert.match(ui.element("search-description").textContent, /Could not change/);
+});
+
+test("saved memories are fetched on open and a deleted memory disappears", async () => {
+  const requests = [];
+  const facts = [{ id: 7, text: "I prefer quiet mornings" },
+    { id: 8, text: "<script>not HTML</script>" }];
+  const fetch = async (url, options) => {
+    requests.push([url, options]);
+    if (url === "/api/memories") return { ok: true, json: async () => ({ facts }) };
+    if (url === "/api/memories/7") return { ok: true };
+    return { ok: true, json: async () => ({ enabled: false }) };
+  };
+  const ui = setup({ browser: { localStorage: { getItem: () => "true" }, fetch } });
+  const details = ui.element("memories");
+  details.open = true;
+  details.dispatchEvent(new ui.document.defaultView.Event("toggle"));
+  await tick();
+  assert.equal(ui.element("memory-list").children.length, 2);
+  assert.equal(ui.element("memory-list").querySelector("script"), null);
+  assert.equal(ui.element("memory-list").children[1].querySelector("span").textContent, facts[1].text);
+  ui.element("memory-list").children[0].querySelector("button").click();
+  await tick();
+  assert.equal(ui.element("memory-list").children.length, 1);
+  assert.equal(requests.at(-1)[0], "/api/memories/7");
+  assert.equal(requests.at(-1)[1].headers["X-Ames-Token"], "test-token");
+});
+
+test("failed memory deletion keeps the fact and allows another attempt", async () => {
+  const fetch = async (url) => url === "/api/memories"
+    ? { ok: true, json: async () => ({ facts: [{ id: 5, text: "Keep this" }] }) }
+    : url === "/api/memories/5" ? { ok: false }
+    : { ok: true, json: async () => ({ enabled: false }) };
+  const ui = setup({ browser: { localStorage: { getItem: () => "true" }, fetch } });
+  const details = ui.element("memories");
+  details.open = true;
+  details.dispatchEvent(new ui.document.defaultView.Event("toggle"));
+  await tick();
+  const remove = ui.element("memory-list").querySelector("button");
+  remove.click();
+  await tick();
+  assert.equal(remove.disabled, false);
+  assert.equal(ui.element("memory-list").children.length, 1);
+  assert.match(ui.element("memory-status").textContent, /Could not delete/);
+});
+
 test("rating buttons appear only on finished rateable replies and still work after the session ends", async () => {
   const fetch = test.mock.fn(async () => ({ ok: true }));
   const values = new Map([["ames-advisory-seen", "true"]]);
@@ -329,7 +423,8 @@ test("rating buttons appear only on finished rateable replies and still work aft
   good.click();
   ui.click("end");
   bad.click();
-  const sent = fetch.mock.calls.map((call) => [call.arguments[0], call.arguments[1].headers["X-Ames-Token"], JSON.parse(call.arguments[1].body)]);
+  const sent = fetch.mock.calls.filter((call) => call.arguments[0] === "/api/rate")
+    .map((call) => [call.arguments[0], call.arguments[1].headers["X-Ames-Token"], JSON.parse(call.arguments[1].body)]);
   assert.deepEqual(sent, [
     ["/api/rate", "test-token", { turn_id: 2, rating: "good" }],
     ["/api/rate", "test-token", { turn_id: 2, rating: "bad" }],

@@ -26,6 +26,12 @@ export function mountConversation(
   const presence = find("presence");
   const transcript = find("transcript");
   const empty = find("transcript-empty");
+  const searchToggle = find<HTMLButtonElement>("search-toggle");
+  const searchDescription = find("search-description");
+  const searchActivity = find("search-activity");
+  const memories = find<HTMLDetailsElement>("memories");
+  const memoryStatus = find("memory-status");
+  const memoryList = find<HTMLUListElement>("memory-list");
   const turns = new Map<string, { row: HTMLLIElement; text: HTMLParagraphElement; final: boolean }>();
   let seen = false;
   try { seen = browser.localStorage.getItem("ames-advisory-seen") === "true"; } catch { /* Site storage may be disabled. */ }
@@ -39,6 +45,90 @@ export function mountConversation(
   let session: Session | undefined;
   let attempt = 0;
   let who: Speaker = "none";
+  let webSearch = false;
+  let mounted = true;
+
+  const settingsHeaders = { "X-Ames-Token": token ?? "" };
+  const renderSearch = () => {
+    searchToggle.setAttribute("aria-pressed", String(webSearch));
+    searchToggle.textContent = webSearch ? "Turn web search off" : "Turn web search on";
+    searchDescription.textContent = webSearch
+      ? "On. Search queries may leave your Mac."
+      : "Off. Search queries stay on your Mac.";
+  };
+  renderSearch();
+  if (token && browser.fetch) {
+    browser.fetch("/api/search", { headers: settingsHeaders })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Search setting unavailable");
+        const body = await response.json();
+        if (typeof body.enabled !== "boolean") throw new Error("Invalid search setting");
+        if (!mounted) return;
+        webSearch = body.enabled;
+        renderSearch();
+        searchToggle.disabled = false;
+      }).catch(() => { if (mounted) searchDescription.textContent = "Could not load web search setting."; });
+  }
+  searchToggle.addEventListener("click", async () => {
+    if (!token || searchToggle.disabled) return;
+    searchToggle.disabled = true;
+    try {
+      const response = await browser.fetch("/api/search", {
+        method: "PUT", headers: { ...settingsHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !webSearch }),
+      });
+      if (!response.ok) throw new Error("Search setting could not be saved");
+      if (!mounted) return;
+      webSearch = !webSearch;
+      renderSearch();
+    } catch {
+      if (mounted) searchDescription.textContent = "Could not change web search. Try again.";
+    } finally {
+      if (mounted) searchToggle.disabled = false;
+    }
+  });
+  const loadMemories = async () => {
+    if (!token || !browser.fetch) return;
+    memoryStatus.textContent = "Loading saved memories...";
+    try {
+      const response = await browser.fetch("/api/memories", { headers: settingsHeaders });
+      if (!response.ok) throw new Error("Could not load memories");
+      const body = await response.json();
+      if (!Array.isArray(body.facts)) throw new Error("Invalid memories");
+      if (!mounted) return;
+      memoryList.replaceChildren();
+      for (const fact of body.facts) {
+        if (!Number.isSafeInteger(fact.id) || fact.id < 1 || typeof fact.text !== "string") continue;
+        const row = document.createElement("li");
+        const text = document.createElement("span");
+        text.textContent = fact.text;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Delete";
+        remove.setAttribute("aria-label", `Delete memory: ${fact.text}`);
+        remove.addEventListener("click", async () => {
+          remove.disabled = true;
+          try {
+            const deleted = await browser.fetch(`/api/memories/${fact.id}`, {
+              method: "DELETE", headers: settingsHeaders,
+            });
+            if (!deleted.ok) throw new Error("Could not delete memory");
+            if (!mounted) return;
+            row.remove();
+            memoryStatus.textContent = memoryList.children.length ? "" : "No saved memories.";
+          } catch {
+            if (mounted) { remove.disabled = false; memoryStatus.textContent = "Could not delete memory. Try again."; }
+          }
+        });
+        row.append(text, remove);
+        memoryList.append(row);
+      }
+      memoryStatus.textContent = memoryList.children.length ? "" : "No saved memories.";
+    } catch {
+      if (mounted) memoryStatus.textContent = "Could not load memories. Close and reopen to retry.";
+    }
+  };
+  memories.addEventListener("toggle", () => { if (memories.open) void loadMemories(); });
 
   // A function, so TypeScript does not narrow `phase` across an await it cannot see through.
   const stale = (current: number) => current !== attempt || phase === "idle";
@@ -96,6 +186,10 @@ export function mountConversation(
   };
   const receive = (event: SessionEvent) => {
     switch (event.type) {
+      case "search":
+        searchActivity.hidden = !event.active;
+        searchActivity.textContent = event.active ? "Searching the web. This query may leave your Mac." : "";
+        break;
       case "speaking":
         who = event.who;
         renderOrb();
@@ -208,6 +302,7 @@ export function mountConversation(
     finish("Session ended");
   });
   return () => {
+    mounted = false;
     ++attempt;
     phase = "idle";
     session?.close();

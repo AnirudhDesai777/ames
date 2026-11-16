@@ -31,6 +31,16 @@
             <button type="button" data-voice="female" aria-pressed="true">Female voice</button>
             <button type="button" data-voice="male" aria-pressed="false">Male voice</button>
           </div>
+          <div class="privacy-control">
+            <div><strong>Web search</strong><p id="search-description">Off. Search queries stay on your Mac.</p></div>
+            <button id="search-toggle" type="button" aria-pressed="false" disabled>Turn web search on</button>
+          </div>
+          <p id="search-activity" role="status" hidden></p>
+          <details id="memories" class="memories">
+            <summary>Saved memories</summary>
+            <p id="memory-status" role="status">Open to see what Ames remembers.</p>
+            <ul id="memory-list" aria-label="Saved memories"></ul>
+          </details>
           <details class="playback"><summary>Audio playback</summary><p>If you can't hear her, press play. For the stub echo, use headphones.</p><audio id="audio" controls aria-label="Conversation playback"></audio></details>
         </section>
         <section class="transcript-panel" aria-labelledby="transcript-title">

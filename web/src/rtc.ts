@@ -2,6 +2,7 @@ export type Speaker = "user" | "ames" | "none";
 export type SessionEvent =
   | { type: "transcript"; role: "user" | "ames"; text: string; final: boolean; turn_id: number; rateable?: boolean }
   | { type: "speaking"; who: Speaker }
+  | { type: "search"; active: boolean }
   | { type: "notice"; code: "session_replaced" | "session_ended" | "server_error"; text: string };
 
 export type Voice = "female" | "male";
@@ -29,6 +30,8 @@ function serverEvent(raw: unknown): SessionEvent | null {
       return turn && ["user", "ames"].includes(data.role) && typeof data.text === "string" && typeof data.final === "boolean" ? data : null;
     case "speaking":
       return ["user", "ames", "none"].includes(data.who) ? data : null;
+    case "search":
+      return typeof data.active === "boolean" ? data : null;
     case "notice":
       return ["session_replaced", "session_ended", "server_error"].includes(data.code) && typeof data.text === "string" ? data : null;
     default:

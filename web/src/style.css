@@ -170,11 +170,72 @@ h1 {
 	margin-top: 10px;
 }
 #mute[aria-pressed="true"],
-#voice button[aria-pressed="true"] {
+#voice button[aria-pressed="true"],
+#search-toggle[aria-pressed="true"] {
 	background: #e3d5c4;
 }
 #end {
 	border-color: transparent;
+}
+.privacy-control {
+	margin: 28px auto 0;
+	max-width: 360px;
+	border-top: 1px solid var(--line);
+	padding-top: 20px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	text-align: left;
+}
+.privacy-control strong {
+	font-size: 14px;
+}
+.privacy-control p,
+#memory-status,
+#search-activity {
+	color: #566454;
+	font-size: 12px;
+	line-height: 1.5;
+}
+.privacy-control p {
+	margin: 5px 0 0;
+}
+.privacy-control button {
+	flex: 0 0 auto;
+	font-size: 12px;
+	padding: 9px 12px;
+}
+#search-activity {
+	margin: 10px auto;
+}
+.memories {
+	margin: 20px auto 0;
+	max-width: 360px;
+	text-align: left;
+	font-size: 13px;
+}
+.memories summary {
+	cursor: pointer;
+}
+.memories ul {
+	list-style: none;
+	padding: 0;
+	margin: 12px 0;
+}
+.memories li {
+	border-top: 1px solid var(--line);
+	padding: 10px 0;
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	line-height: 1.5;
+	overflow-wrap: anywhere;
+}
+.memories li button {
+	font-size: 12px;
+	padding: 6px 10px;
 }
 .playback {
 	margin: 24px auto 0;
@@ -219,6 +280,9 @@ audio {
 	color: #566454;
 	font-size: 10px;
 	text-transform: uppercase;
+}
+.memories li span {
+	min-width: 0;
 }
 #transcript-empty {
 	font:
