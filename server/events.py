@@ -18,5 +18,8 @@ class Events:
     def speaking(self, who: str):
         self.send(dict(type="speaking", who=who))
 
+    def search(self, active: bool):
+        self.send(dict(type="search", active=active))
+
     def notice(self, code: str, text: str):
         self.send(dict(type="notice", code=code, text=text))

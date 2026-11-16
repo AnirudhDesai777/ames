@@ -1,16 +1,49 @@
 """Validated v1 tool execution; backends never see the raw model envelope."""
 
 import asyncio
+import json
 import os
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import aiohttp
 from loguru import logger
 
-from server.memory.repository import Repository
+from server.memory.repository import DATA_DIR, Repository
 from server.tool_calls import validate_call
+
+SEARCH_SETTING = DATA_DIR / "search-enabled.json"
+
+
+class SearchDisabled(RuntimeError):
+    pass
+
+
+def search_enabled():
+    try:
+        return json.loads(SEARCH_SETTING.read_text(encoding="utf-8")) == {"enabled": True}
+    except (OSError, ValueError):
+        return False
+
+
+def set_search_enabled(enabled: bool):
+    if not isinstance(enabled, bool):
+        raise ValueError("Invalid search setting")
+    SEARCH_SETTING.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    SEARCH_SETTING.parent.chmod(0o700)
+    with tempfile.NamedTemporaryFile(mode="w", dir=SEARCH_SETTING.parent, delete=False) as file:
+        path = Path(file.name)
+        try:
+            json.dump({"enabled": enabled}, file)
+            file.flush()
+            os.fsync(file.fileno())
+            path.chmod(0o600)
+            path.replace(SEARCH_SETTING)
+        finally:
+            path.unlink(missing_ok=True)
 
 
 def memory_call(name, value):
@@ -39,6 +72,8 @@ def compact_results(items):
 
 
 async def search(query):
+    if not search_enabled():
+        raise SearchDisabled("search_disabled")
     timeout = aiohttp.ClientTimeout(total=3)
     async with aiohttp.ClientSession(timeout=timeout, trust_env=False) as session:
         try:
@@ -51,6 +86,8 @@ async def search(query):
             return compact_results(payload["results"])
         except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, KeyError, TypeError):
             logger.error("searxng_search_failed")
+        if not search_enabled():
+            raise SearchDisabled("search_disabled")
         key = os.environ.get("BRAVE_API_KEY")
         if key:
             try:

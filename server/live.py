@@ -29,7 +29,7 @@ from pipecat.workers.runner import WorkerRunner
 from server.cascade import LocalLLMService, ReplySanitizer, cascade_stages
 from server.control_tokens import ParserState, parse_chunk
 from server.tool_calls import FILLER, parse_reply, result_message, speech_route
-from server.tools import execute
+from server.tools import SearchDisabled, execute, search_enabled
 
 CRISIS_LINE = (
     "I can't help with this one. Please call your local emergency number "
@@ -211,12 +211,21 @@ class ToolLoop(LocalLLMService):
                     conversation.history.pop()
                 receipt = None
                 if parsed.call:
+                    searching = parsed.call["name"] == "web_search" and search_enabled()
+                    if searching:
+                        conversation.events.search(True)
                     try:
                         data = await self.executor(parsed.call)
                         receipt = result_message(parsed.call["name"], data=data)
+                    except SearchDisabled:
+                        logger.error("search_disabled")
+                        receipt = result_message(parsed.call["name"], error="search_disabled")
                     except Exception:
                         logger.error("tool_execution_failed")
                         receipt = result_message(parsed.call["name"], error="tool_unavailable")
+                    finally:
+                        if searching:
+                            conversation.events.search(False)
                 else:
                     receipt = result_message(None, error=parsed.error)
                 call_message = {"role": "assistant", "content": raw}

@@ -26,7 +26,12 @@ services:
 ```
 
 Run `docker compose up -d`. Ames uses `http://localhost:8080` by default; set
-`AMES_SEARXNG_URL` to change it. If local search fails and `BRAVE_API_KEY` is
-set, Ames sends the query to Brave Search API. Without either backend, the tool
-returns a safe error receipt. Web search sends queries outside the machine; do
-not use it for private context. Tools are invoked only on validated model calls.
+`AMES_SEARXNG_URL` to change it. Web search is off by default. Turn it on in the
+web UI to allow queries to leave the Mac; the setting is saved in the local Ames
+data directory. The UI signals when a search runs. When search is off, no backend
+is contacted and the model receives a `search_disabled` error receipt.
+
+If local search fails while search is on and `BRAVE_API_KEY` is set, Ames sends
+the query to Brave Search API. Without either backend, the tool returns a safe
+error receipt. Do not use private context in queries. Tools are invoked only on
+validated model calls.

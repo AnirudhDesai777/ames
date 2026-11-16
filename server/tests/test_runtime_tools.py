@@ -177,6 +177,78 @@ async def test_invalid_calls_and_crisis(monkeypatch, first, following, spoken, e
         )
 
 
+async def test_disabled_search_returns_error_receipt_without_a_request(monkeypatch, tmp_path):
+    from server import tools
+    from server.live import ToolLoop
+
+    monkeypatch.setenv("AMES_STUB", "1")
+    monkeypatch.setattr(tools, "SEARCH_SETTING", tmp_path / "search-enabled.json")
+
+    class Model:
+        async def assemble(self, history, text):
+            return [{"role": "system", "content": "prompt"}, {"role": "user", "content": text}]
+
+        async def tokens(self, messages):
+            if len(messages) == 2:
+                yield (
+                    '<state crisis=0><tool_call>{"name":"web_search",'
+                    '"arguments":{"query":"news"}}</tool_call>'
+                )
+            else:
+                assert json.loads(messages[-1]["content"])["ames_tool_result"] == {
+                    "name": "web_search",
+                    "ok": False,
+                    "error": "search_disabled",
+                }
+                yield "<state crisis=0>Search is off."
+
+    conversation = Conversation(Mock())
+    stages = live_stages(
+        StubTranscription(), Model(), ToneTTS(), conversation, DiscardAudioOutput()
+    )
+    assert isinstance(next(stage for stage in stages if isinstance(stage, ToolLoop)), ToolLoop)
+    received, unused = await run_test(
+        Pipeline(stages), frames_to_send=[TranscriptionFrame("Any news?", "", "now")]
+    )
+    assert " ".join(frame.text for frame in received if isinstance(frame, TTSTextFrame)) == (
+        "I'm looking that up on the web. Search is off."
+    )
+    conversation.events.search.assert_not_called()
+
+
+async def test_enabled_search_signals_lookup_to_ui(monkeypatch, tmp_path):
+    from server import tools
+    from server.live import ToolLoop
+
+    monkeypatch.setenv("AMES_STUB", "1")
+    monkeypatch.setattr(tools, "SEARCH_SETTING", tmp_path / "search-enabled.json")
+    tools.set_search_enabled(True)
+
+    class Model:
+        async def assemble(self, history, text):
+            return [{"role": "system", "content": "prompt"}, {"role": "user", "content": text}]
+
+        async def tokens(self, messages):
+            yield (
+                '<state crisis=0><tool_call>{"name":"web_search",'
+                '"arguments":{"query":"news"}}</tool_call>'
+                if len(messages) == 2
+                else "<state crisis=0>Found nothing."
+            )
+
+    conversation = Conversation(Mock())
+    stages = live_stages(
+        StubTranscription(), Model(), ToneTTS(), conversation, DiscardAudioOutput()
+    )
+
+    async def fake_execute(call):
+        return {"results": []}
+
+    next(stage for stage in stages if isinstance(stage, ToolLoop)).executor = fake_execute
+    await run_test(Pipeline(stages), frames_to_send=[TranscriptionFrame("News?", "", "now")])
+    assert [call.args for call in conversation.events.search.call_args_list] == [(True,), (False,)]
+
+
 def test_migrate_v1_database_without_losing_facts(tmp_path):
     import sqlite3
 
@@ -208,10 +280,14 @@ def test_migrate_v1_database_without_losing_facts(tmp_path):
 def test_memory_fts_delete_and_migrate(tmp_path):
     store = Repository(tmp_path)
     store.remember("I prefer candid feedback to prestige")
-    assert store.recall('candid OR "') == ["I prefer candid feedback to prestige"]
+    store.remember("Candid feedback helped last week")
+    original = next(row for row in store.list_episodes() if row["text"].startswith("I prefer"))
+    assert store.delete_episode(original["id"])
+    assert not store.delete_episode(original["id"])
+    assert store.recall('candid OR "') == ["Candid feedback helped last week"]
     store.close()
     store = Repository(tmp_path)
-    assert store.recall("feedback") == ["I prefer candid feedback to prestige"]
+    assert store.recall("feedback") == ["Candid feedback helped last week"]
     store.delete_everything()
     assert store.recall("feedback") == []
     store.close()

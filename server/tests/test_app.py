@@ -28,6 +28,67 @@ async def client(tmp_path, monkeypatch):
         yield client
 
 
+async def test_search_setting_requires_token_and_persists_off_by_default(
+    client, monkeypatch, tmp_path
+):
+    from server import tools
+
+    monkeypatch.setattr(tools, "SEARCH_SETTING", tmp_path / "search-enabled.json")
+    assert (await client.get("/api/search", headers=headers(client))).status == 200
+    assert await (await client.get("/api/search", headers=headers(client))).json() == {
+        "enabled": False
+    }
+    for method in (client.get, client.put):
+        response = await method("/api/search", headers={"Host": "127.0.0.1:8765"})
+        assert response.status == 401
+    for value in (None, "true", 1, {}, {"enabled": True, "other": 1}):
+        response = await client.put("/api/search", headers=headers(client), json=value)
+        assert response.status == 400
+    response = await client.put("/api/search", headers=headers(client), json={"enabled": True})
+    assert response.status == 200
+    assert tools.search_enabled()
+    assert await (await client.get("/api/search", headers=headers(client))).json() == {
+        "enabled": True
+    }
+    assert (
+        await client.put("/api/search", headers=headers(client), json={"enabled": False})
+    ).status == 200
+    assert not tools.search_enabled()
+
+
+async def test_memory_api_lists_and_deletes_single_episode(client, monkeypatch, tmp_path):
+    from server.memory.repository import Repository
+
+    monkeypatch.setattr(app_module, "DATA_DIR", tmp_path)
+    store = Repository(tmp_path)
+    store.remember("I value candor")
+    store.remember("I prefer quiet mornings")
+    memories = [dict(row) for row in store.list_episodes()]
+    store.close()
+    response = await client.get("/api/memories", headers=headers(client))
+    assert response.status == 200
+    assert (await response.json())["facts"] == memories
+    assert response.headers["Cache-Control"] == "no-store"
+    assert (await client.get("/api/memories", headers={"Host": "127.0.0.1:8765"})).status == 401
+    assert (
+        await client.delete(
+            f"/api/memories/{memories[0]['id']}", headers={"Host": "127.0.0.1:8765"}
+        )
+    ).status == 401
+    response = await client.delete(f"/api/memories/{memories[0]['id']}", headers=headers(client))
+    assert response.status == 204
+    store = Repository(tmp_path)
+    assert store.recall("mornings") == []
+    assert store.recall("candor") == ["I value candor"]
+    store.close()
+    assert (
+        await client.delete(f"/api/memories/{memories[0]['id']}", headers=headers(client))
+    ).status == 404
+    assert (
+        await client.delete("/api/memories/9223372036854775808", headers=headers(client))
+    ).status == 404
+
+
 @pytest.fixture
 def logged():
     lines = []
@@ -48,6 +109,10 @@ def headers(client, **extra):
         ("GET", "/api/health"),
         ("POST", "/api/offer"),
         ("POST", "/api/rate"),
+        ("GET", "/api/search"),
+        ("PUT", "/api/search"),
+        ("GET", "/api/memories"),
+        ("DELETE", "/api/memories/1"),
     ],
 )
 @pytest.mark.parametrize(
@@ -67,6 +132,10 @@ async def test_bad_host_on_every_endpoint(client, method, path, host):
         ("GET", "/api/health"),
         ("POST", "/api/offer"),
         ("POST", "/api/rate"),
+        ("GET", "/api/search"),
+        ("PUT", "/api/search"),
+        ("GET", "/api/memories"),
+        ("DELETE", "/api/memories/1"),
     ],
 )
 @pytest.mark.parametrize("origin", ["https://evil.example", "null", "http://localhost:8765", ""])
@@ -76,7 +145,17 @@ async def test_bad_origin_on_every_endpoint(client, method, path, origin):
     assert "Access-Control-Allow-Origin" not in response.headers
 
 
-@pytest.mark.parametrize("method,path", [("GET", "/api/health"), ("POST", "/api/offer")])
+@pytest.mark.parametrize(
+    "method,path",
+    [
+        ("GET", "/api/health"),
+        ("POST", "/api/offer"),
+        ("GET", "/api/search"),
+        ("PUT", "/api/search"),
+        ("GET", "/api/memories"),
+        ("DELETE", "/api/memories/1"),
+    ],
+)
 @pytest.mark.parametrize("token", [None, "wrong", ""])
 async def test_missing_or_wrong_token(client, method, path, token):
     request_headers = {"Host": "127.0.0.1:8765"}
@@ -247,12 +326,14 @@ def test_rtvi_emitters():
     events = Events(connection)
     events.transcript("user", "stub", True, 0)
     events.speaking("none")
+    events.search(True)
     events.notice("server_error", "stub")
     assert [call.args[0] for call in connection.send_app_message.call_args_list] == [
         {"label": "rtvi-ai", "type": "server-message", "data": data}
         for data in [
             {"type": "transcript", "role": "user", "text": "stub", "final": True, "turn_id": 0},
             {"type": "speaking", "who": "none"},
+            {"type": "search", "active": True},
             {"type": "notice", "code": "server_error", "text": "stub"},
         ]
     ]

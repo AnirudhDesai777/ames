@@ -136,6 +136,20 @@ class Repository:
                 "INSERT INTO episode(text, created_at) VALUES (?, ?)", (nonempty(fact), now())
             )
 
+    def list_episodes(self) -> list[sqlite3.Row]:
+        return self.connection.execute(
+            "SELECT id, text, created_at FROM episode ORDER BY created_at DESC, id DESC"
+        ).fetchall()
+
+    def delete_episode(self, episode_id: int) -> bool:
+        with self.connection:
+            deleted = self.connection.execute(
+                "DELETE FROM episode WHERE id = ?", (episode_id,)
+            ).rowcount
+            if deleted:
+                self.connection.execute("UPDATE delete_epoch SET n = n + 1")
+            return bool(deleted)
+
     def recall(self, query: str) -> list[str]:
         # Treat query words as FTS literals, never as user-supplied FTS syntax.
         import re
