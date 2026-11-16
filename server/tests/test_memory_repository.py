@@ -26,7 +26,7 @@ def test_schema_is_private_persistent_and_reopenable(tmp_path):
     second = Repository(data_dir)
     try:
         versions = second.connection.execute("SELECT version FROM schema_version").fetchall()
-        assert [row[0] for row in versions] == [1]
+        assert [row[0] for row in versions] == [2]
         assert second.connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert second.connection.execute("PRAGMA secure_delete").fetchone()[0] == 1
         assert second.delete_epoch() == 0
@@ -44,13 +44,13 @@ def test_unsupported_schema_is_not_overwritten(tmp_path):
     store = Repository(tmp_path)
     store.add_relation(1, "likes", value="tea")
     with store.connection:
-        store.connection.execute("UPDATE schema_version SET version = 2")
+        store.connection.execute("UPDATE schema_version SET version = 3")
     store.close()
     with pytest.raises(ValueError, match="schema version"):
         Repository(tmp_path)
     with sqlite3.connect(tmp_path / "ames.db") as connection:
         assert connection.execute("SELECT value FROM relation").fetchone()[0] == "tea"
-        assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 2
+        assert connection.execute("SELECT version FROM schema_version").fetchone()[0] == 3
 
 
 def test_entities_and_aliases_are_normalized_without_merging_types(repository):
@@ -302,7 +302,7 @@ def test_delete_everything_keeps_only_user_and_metadata(repository):
     assert [tuple(row) for row in repository.connection.execute("SELECT * FROM entity")] == [
         (1, "User", "User", "user")
     ]
-    assert repository.connection.execute("SELECT version FROM schema_version").fetchone()[0] == 1
+    assert repository.connection.execute("SELECT version FROM schema_version").fetchone()[0] == 2
     assert repository.delete_epoch() == 1
     assert repository.add_entity("User") == 1
     repository.add_relation(1, "likes", value="tea")
