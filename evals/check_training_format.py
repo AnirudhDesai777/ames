@@ -2,7 +2,11 @@
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from server.tool_calls import parse_reply
 
@@ -14,7 +18,19 @@ def check_row(row):
     pending = None
     awaiting_reply = False
     for index, message in enumerate(messages):
-        if not isinstance(message, dict) or set(message) != {"role", "content"}:
+        if (
+            not isinstance(message, dict)
+            or not {"role", "content"} <= set(message) <= {"role", "content", "train", "weight"}
+            or ("train" in message and not isinstance(message["train"], bool))
+            or (
+                "weight" in message
+                and (
+                    isinstance(message["weight"], bool)
+                    or not isinstance(message["weight"], (int, float))
+                    or message["weight"] not in (0, 1)
+                )
+            )
+        ):
             return "invalid_message"
         role, content = message["role"], message["content"]
         if role not in {"system", "user", "assistant"} or not isinstance(content, str):

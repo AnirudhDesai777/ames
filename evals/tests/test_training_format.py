@@ -53,11 +53,25 @@ def test_invalid_training_rows(messages, error):
     assert check_row(row(*messages)) == error
 
 
+def test_optional_training_metadata_is_checked():
+    messages = {
+        "messages": [
+            {"role": "assistant", "content": "<state crisis=0>Hello", "train": False, "weight": 1.0}
+        ]
+    }
+    assert check_row(messages) is None
+    for key, value in (("train", 1), ("weight", True), ("weight", 0.5), ("other", "no")):
+        assert check_row({"messages": [{**messages["messages"][0], key: value}]}) == (
+            "invalid_message"
+        )
+    assert check_row({"messages": [{**messages["messages"][0], "weight": 0}]}) is None
+
+
 def test_cli_reports_line_number(tmp_path):
     path = tmp_path / "training.jsonl"
     path.write_text(json.dumps(row(("assistant", "<state crisis=0>Hello"))) + "\n{}\n")
     result = subprocess.run(
-        [sys.executable, "-m", "evals.check_training_format", str(path)],
+        [sys.executable, "evals/check_training_format.py", str(path)],
         capture_output=True,
         text=True,
         check=False,
