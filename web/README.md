@@ -33,6 +33,7 @@ The transcript stays after End session and clears when a new conversation starts
 Mute microphone disables the outgoing audio track; incoming audio keeps playing.
 End session closes the local peer and releases the microphone, including when
 connection setup is still pending. Neither control sends an HTTP request.
+The text box and Send button are enabled while a session is connected, muted or not. Enter or Send posts `{"type": "text", "text": "..."}` on the data channel and clears the box; the server treats it as a spoken turn, cutting off any reply in progress.
 The Female voice and Male voice buttons work before and during a session. The choice is kept in `localStorage` and sent to the server as `set_voice` when a session connects and when it changes.
 
 `session_replaced` and `session_ended` close the session and keep the server's

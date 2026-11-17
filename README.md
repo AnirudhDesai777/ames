@@ -28,6 +28,8 @@ repository root. It opens Chrome with a private token in the URL fragment.
 Acknowledge the first-run advisory, then choose Start conversation to request
 the microphone and hear the stub reply as tone audio. The client displays the
 server transcript and session notices, with local mute and end controls. For
+typed input, use the text box while a session is connected, muted or not; a
+message cuts off any reply in progress and Ames answers it by voice. For
 real speech, install the local models and set `AMES_LLM_MODEL` as described in
 [server/README.md](server/README.md), then run with `AMES_STUB=0`.
 
