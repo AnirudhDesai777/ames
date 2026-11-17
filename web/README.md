@@ -20,9 +20,9 @@ address bar. The first-run advisory must be acknowledged before starting a
 conversation. Its acknowledgement lives in `localStorage`; clearing site data
 shows it again. If storage is unavailable, acknowledgement lasts for that visit.
 
-Start conversation asks for the microphone, gathers local ICE candidates, then
-asks Chrome for echo cancellation, noise suppression, and automatic gain control on the
-microphone, then sends an offer with `X-Ames-Token` in a header. The token is never sent in a query
+Start conversation asks for the microphone with echo cancellation, noise
+suppression, and automatic gain control, gathers local ICE candidates, then
+sends an offer with `X-Ames-Token` in a header. The token is never sent in a query
 string or offer body. `peerConfiguration()` supplies an empty `iceServers` list.
 Stub mode replies with tone audio through the live pipeline. Audio playback
 contains native controls if Chrome blocks autoplay.

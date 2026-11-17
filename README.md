@@ -37,7 +37,8 @@ AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/qwen3.
   uv run --locked --extra mac python -m server.app
 ```
 
-The default model is the Qwen3.5 2B Ames fine-tune v1.2 in MLX 4-bit; any local
+There is no default: the server refuses to start without `AMES_LLM_MODEL`. The
+recommended model is the Qwen3.5 2B Ames fine-tune v1.2 in MLX 4-bit; any local
 mlx-lm model directory can be used instead.
 
 See [server/README.md](server/README.md) and [web/README.md](web/README.md) for

@@ -17,8 +17,8 @@ AMES_STUB=1 uv run --locked python -m server.app
 ```
 
 For real models, install the `mac` extra and set `AMES_LLM_MODEL` to a local mlx-lm
-model directory, exported in the shell or prefixed on the command. The current
-default is the Qwen3.5 2B Ames fine-tune v1.2, MLX affine 4-bit (group size 64):
+model directory, exported in the shell or prefixed on the command. There is no
+default; the recommended model is the Qwen3.5 2B Ames fine-tune v1.2, MLX affine 4-bit (group size 64):
 
 ```sh
 AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/qwen3.5-2b-ames-v1.2-mlx-4bit" \
@@ -159,7 +159,7 @@ For the manual run on the reference M4 Pro Mac with 24 GB RAM:
    and a complete mlx-lm model directory under the same `models/` directory.
    Use the revisions recorded in `docs/models.md`. This command never downloads
    weights.
-4. Run with the Mac idle, using the local LLM directory. The current default is the
+4. Run with the Mac idle, using the local LLM directory. The recommended model is the
    Qwen3.5 2B Ames fine-tune v1.2, MLX affine 4-bit (group size 64). Export
    `AMES_LLM_MODEL` in the shell or prefix it as below; any local mlx-lm model
    directory can be used instead:
@@ -290,7 +290,7 @@ version 2 by adding the `episode` table and its full-text index; other
 schema versions fail. The server entry point already sets
 umask 077 for SQLite's companion files. Call `close()` when finished.
 
-Create and use each `Repository` on the server's event loop thread (`sqlite3` enforces `check_same_thread`), never inside the LLM executor.
+Create and use each `Repository` on a single thread (`sqlite3` enforces `check_same_thread`), never inside the LLM executor. The memory tools open a fresh one inside each `asyncio.to_thread` call.
 
 `add_entity(type, name)` reuses a type plus trimmed, lowercased name;
 `add_entity("User")` always returns 1. `add_alias(alias, entity_id)` normalizes
