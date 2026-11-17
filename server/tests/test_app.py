@@ -552,6 +552,35 @@ async def test_set_voice_message_reaches_the_session_tts_and_other_messages_do_n
     tts.set_voice.assert_called_once_with("male")
 
 
+async def test_text_message_is_submitted_only_when_valid(monkeypatch):
+    monkeypatch.setenv("AMES_STUB", "1")
+    stt, model = app_module.model_services()
+    handlers = {}
+    connection = Mock()
+    connection.event_handler = lambda name: lambda handler: handlers.setdefault(name, handler)
+    live = Mock(submit=AsyncMock())
+    monkeypatch.setattr(app_module, "build_live", Mock(return_value=live))
+    session = app_module.Session(connection, stt, model, Mock())
+    session.prepare()
+    cases = [
+        {"type": "text", "text": "  hello  "},
+        {"type": "text", "text": "x" * app_module.MAX_TYPED},
+        {"type": "text", "text": "   "},
+        {"type": "text", "text": ""},
+        {"type": "text", "text": "x" * (app_module.MAX_TYPED + 1)},
+        {"type": "text", "text": 5},
+        {"type": "text"},
+        {"type": "other", "text": "hello"},
+        "hello",
+    ]
+    for message in cases:
+        await handlers["app-message"](connection, message)
+    assert [call.args[0] for call in live.submit.call_args_list] == [
+        "hello",
+        "x" * app_module.MAX_TYPED,
+    ]
+
+
 async def test_rating_endpoint_works_after_the_session_ends(client, monkeypatch, tmp_path):
     connection = Mock()
     connection.pc.connectionState = "closed"
