@@ -27,6 +27,10 @@
             <button id="mute" type="button" aria-pressed="false" disabled>Mute microphone</button>
             <button id="end" type="button" disabled>End session</button>
           </div>
+          <div id="typed" class="controls">
+            <input id="typed-text" type="text" maxlength="2000" autocomplete="off" aria-label="Type a message to Ames" placeholder="Or type a message" disabled />
+            <button id="typed-send" type="button" disabled>Send</button>
+          </div>
           <div id="voice" class="controls" role="group" aria-label="Ames voice">
             <button type="button" data-voice="female" aria-pressed="true">Female voice</button>
             <button type="button" data-voice="male" aria-pressed="false">Male voice</button>

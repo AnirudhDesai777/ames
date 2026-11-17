@@ -297,6 +297,16 @@ test("setVoice sends one set_voice message over the open data channel and nothin
   session.setVoice("female");
   assert.equal(setup.peer.channel.send.mock.callCount(), 1);
 });
+test("sendText sends one text message over the open data channel and nothing after close", async (t) => {
+  const setup = browser(t);
+  const session = startSession("token", setup.audio, () => {}, () => {});
+  await session.ready;
+  session.sendText("hello");
+  assert.deepEqual(setup.peer.channel.send.mock.calls.map((call) => JSON.parse(call.arguments[0])), [{ type: "text", text: "hello" }]);
+  session.close();
+  session.sendText("late");
+  assert.equal(setup.peer.channel.send.mock.callCount(), 1);
+});
 test("the microphone asks for echo cancellation, noise suppression and auto gain", async (t) => {
   const setup = browser(t);
   const session = startSession("token", setup.audio, () => {}, () => {});

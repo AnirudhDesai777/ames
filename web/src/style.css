@@ -166,8 +166,14 @@ h1 {
 #connect:hover:enabled {
 	background: #405c4b;
 }
-#voice {
+#voice,
+#typed {
 	margin-top: 10px;
+}
+#typed input {
+	flex: 1 1 220px;
+	max-width: 320px;
+	font: inherit;
 }
 #mute[aria-pressed="true"],
 #voice button[aria-pressed="true"],

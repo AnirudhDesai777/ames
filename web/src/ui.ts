@@ -16,6 +16,8 @@ export function mountConversation(
   const start = find<HTMLButtonElement>("connect");
   const mute = find<HTMLButtonElement>("mute");
   const end = find<HTMLButtonElement>("end");
+  const typed = find<HTMLInputElement>("typed-text");
+  const send = find<HTMLButtonElement>("typed-send");
   const voices = [...document.querySelectorAll<HTMLButtonElement>("#voice button")];
   const audio = find<HTMLAudioElement>("audio");
   const advisory = find("advisory");
@@ -146,6 +148,7 @@ export function mountConversation(
     mute.textContent = "Mute microphone";
     mute.setAttribute("aria-pressed", "false");
     mute.disabled = true;
+    typed.disabled = send.disabled = true;
     end.disabled = true;
     start.disabled = !token || !seen;
     start.textContent = button;
@@ -279,6 +282,7 @@ export function mountConversation(
       next.setVoice(voice);
       status.textContent = "Connected";
       mute.disabled = false;
+      typed.disabled = send.disabled = false;
       renderOrb();
     } catch (error) {
       if (stale(current)) return;
@@ -296,6 +300,14 @@ export function mountConversation(
     mute.setAttribute("aria-pressed", String(muted));
     mute.textContent = muted ? "Unmute microphone" : "Mute microphone";
   });
+  const sendTyped = () => {
+    const text = typed.value.trim();
+    if (phase !== "connected" || !text) return;
+    session?.sendText(text);
+    typed.value = "";
+  };
+  send.addEventListener("click", sendTyped);
+  typed.addEventListener("keydown", (event) => { if (event.key === "Enter") sendTyped(); });
   end.addEventListener("click", () => {
     if (phase === "idle") return;
     ++attempt;
