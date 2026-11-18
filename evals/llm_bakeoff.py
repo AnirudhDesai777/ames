@@ -14,7 +14,7 @@ from statistics import mean
 from evals import run
 from evals.scoring import gates
 from evals.stubs import stub_extractor, stub_model
-from server.llm import MAX_REPLY_TOKENS
+from server.llm import MAX_REPLY_TOKENS, MODEL_DIR
 from server.prompt import HISTORY_TOKENS, PromptAssembler, load_system_prompt
 
 # IDs, revisions and loaders approved in issue #12 on 2026-11-08.
@@ -29,6 +29,11 @@ CANDIDATES = {
     "bonsai2-2b": ("prism-ml/Ternary-Bonsai-2-2B-mlx-2bit", "1c6cbae", "vlm"),
     "lfm3-1b7": ("LiquidAI/LFM3-1.7B-MLX-4bit", "91f3408", "vlm"),
     "granite42-3b": ("ibm-granite/granite-4.2-3b-q4-mlx", "0c6f39b", "lm"),
+    "ames-v1": (
+        "qwen3.5-2b-ames-v1-mlx-4bit",
+        "461bddb01a7cb603535849cfdb82b06ff32ae680dc0ba60edd2689fcf1fbf3bc",
+        "local",
+    ),
 }
 SAMPLING = {"temperature": 0.7, "top_p": 0.9, "max_tokens": MAX_REPLY_TOKENS}
 REPEATS = 3
@@ -132,7 +137,7 @@ class StubModel:
     def __init__(self, entry, sampling):
         self.sampling = sampling
         self.resolved_revision = entry[1]
-        self.assembler = PromptAssembler(self.count_tokens)
+        self.assembler = PromptAssembler(self.count_tokens, tools=entry[2] == "local")
         self.samples = []
 
     def count_tokens(self, text):
@@ -180,10 +185,17 @@ class LocalModel:
         from mlx_lm.sample_utils import make_sampler
         from mlx_lm.tokenizer_utils import TokenizerWrapper
 
-        path = snapshot_download(entry[0], revision=entry[1], local_files_only=True)
-        self.resolved_revision = Path(path).name
-        if not self.resolved_revision.startswith(entry[1]):
-            raise ValueError("local snapshot does not match the approved revision")
+        if entry[2] == "local":
+            path = MODEL_DIR / entry[0]
+            with (path / "model.safetensors").open("rb") as weights:
+                self.resolved_revision = hashlib.file_digest(weights, "sha256").hexdigest()
+            if self.resolved_revision != entry[1]:
+                raise ValueError("local weights do not match the pinned revision")
+        else:
+            path = snapshot_download(entry[0], revision=entry[1], local_files_only=True)
+            self.resolved_revision = Path(path).name
+            if not self.resolved_revision.startswith(entry[1]):
+                raise ValueError("local snapshot does not match the approved revision")
         mx.reset_peak_memory()
         if entry[2] == "vlm":
             loaded, processor = load_vlm(path)
@@ -208,7 +220,7 @@ class LocalModel:
             self.model = TextDecoder(loaded.language_model)
             self.tokenizer = getattr(processor, "tokenizer", processor)
         else:
-            self.model, self.tokenizer = load(path)
+            self.model, self.tokenizer = load(str(path))
         if not isinstance(self.tokenizer, TokenizerWrapper):
             self.tokenizer = TokenizerWrapper(self.tokenizer)
         if "<|endoftext|>" in self.tokenizer.get_vocab():
@@ -222,7 +234,7 @@ class LocalModel:
         self.make_prompt_cache = make_prompt_cache
         self.store = LRUPromptCache(max_size=1)
         self.sampler = make_sampler(temp=sampling["temperature"], top_p=sampling["top_p"])
-        self.assembler = PromptAssembler(self.count_tokens)
+        self.assembler = PromptAssembler(self.count_tokens, tools=entry[2] == "local")
         self.samples = []
 
     def count_tokens(self, text):
@@ -441,6 +453,7 @@ def bakeoff(candidate, *, stub, factory=None):
             raise ValueError("bake-off requires mlx-lm==0.32.2")
         factory = factory or (StubModel if stub else LocalModel)
         model = factory(entry, SAMPLING)
+        result["system_prompt_sha256"] = sha256(model.assembler.system_prompt)
         result["resolved_revision"] = model.resolved_revision
         result["performance"] = benchmark(model)
         recording = RecordingModel(model)
