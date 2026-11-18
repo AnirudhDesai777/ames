@@ -17,7 +17,13 @@ from pipecat.tests.utils import SleepFrame, run_test
 
 from server.cascade import StubTranscription, ToneTTS
 from server.latency import DiscardAudioOutput
-from server.live import Conversation, SessionOutput, SessionPrompt, live_stages
+from server.live import (
+    Conversation,
+    SessionOutput,
+    SessionPrompt,
+    TypedTextFrame,
+    live_stages,
+)
 from server.llm import StubLanguageModel
 
 
@@ -272,3 +278,34 @@ async def test_transcripts_wait_for_the_end_of_the_user_turn():
         ("user", "I was thinking about cats", True, 1),
         ("user", "and dogs", True, 2),
     ]
+
+
+async def test_typed_text_replaces_half_spoken_text_and_is_not_held_by_user_speaking(monkeypatch):
+    from pipecat.frames.frames import UserStartedSpeakingFrame
+
+    monkeypatch.setenv("AMES_STUB", "1")
+    monkeypatch.setitem(sys.modules, "pipecat.audio.vad.silero", None)
+    conversation = Conversation(Mock())
+    received, upstream = await run_test(
+        Pipeline(
+            live_stages(
+                StubTranscription(),
+                StubLanguageModel(),
+                ToneTTS(),
+                conversation,
+                DiscardAudioOutput(),
+            )
+        ),
+        frames_to_send=[
+            UserStartedSpeakingFrame(),
+            TranscriptionFrame("half spoken", "", "now"),
+            SleepFrame(0.05),
+            InterruptionFrame(),
+            TypedTextFrame(text="typed instead", user_id="", timestamp=""),
+            SleepFrame(0.35),
+        ],
+    )
+    assert conversation.turn_id == 1
+    assert not conversation.user_speaking
+    assert conversation.history[0] == {"role": "user", "content": "typed instead"}
+    assert any(isinstance(frame, TTSAudioRawFrame) for frame in received)

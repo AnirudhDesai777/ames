@@ -15,7 +15,7 @@ function setup({ token = "test-token", seen = true, storage, browser, pending = 
     let resolve;
     let reject;
     const ready = new Promise((yes, no) => { resolve = yes; reject = no; });
-    const session = { ready, close: test.mock.fn(), setMuted: test.mock.fn(), setVoice: test.mock.fn(), receive, disconnected, resolve, reject, credential, audio };
+    const session = { ready, close: test.mock.fn(), setMuted: test.mock.fn(), setVoice: test.mock.fn(), sendText: test.mock.fn(), receive, disconnected, resolve, reject, credential, audio };
     sessions.push(session);
     if (error) reject(error);
     else if (!pending) resolve();
@@ -430,4 +430,34 @@ test("rating buttons appear only on finished rateable replies and still work aft
     ["/api/rate", "test-token", { turn_id: 2, rating: "bad" }],
   ]);
   assert.deepEqual([good.getAttribute("aria-pressed"), bad.getAttribute("aria-pressed")], ["false", "true"]);
+});
+
+test("the text box is enabled only while connected, sends trimmed text on click or Enter and then clears", async () => {
+  const ui = setup({ pending: true });
+  assert.equal(ui.element("typed-text").disabled, true);
+  assert.equal(ui.element("typed-send").disabled, true);
+  ui.click("connect");
+  await tick();
+  assert.equal(ui.element("typed-text").disabled, true);
+  ui.sessions[0].resolve();
+  await tick();
+  const box = ui.element("typed-text");
+  assert.equal(box.disabled, false);
+  assert.equal(ui.element("typed-send").disabled, false);
+  assert.equal(box.getAttribute("aria-label"), "Type a message to Ames");
+  box.value = "   ";
+  ui.click("typed-send");
+  box.value = "  hello there ";
+  ui.click("typed-send");
+  assert.equal(box.value, "");
+  box.value = "again";
+  const enter = new ui.document.defaultView.Event("keydown");
+  enter.key = "Enter";
+  box.dispatchEvent(enter);
+  assert.deepEqual(ui.sessions[0].sendText.mock.calls.map((call) => call.arguments), [["hello there"], ["again"]]);
+  ui.click("mute");
+  assert.equal(box.disabled, false);
+  ui.click("end");
+  assert.equal(box.disabled, true);
+  assert.equal(ui.element("typed-send").disabled, true);
 });

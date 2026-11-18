@@ -22,6 +22,7 @@ from server.memory.repository import Repository
 from server.tools import search_enabled, set_search_enabled
 from server.turn_log import TurnLog
 
+MAX_TYPED = 2000
 HOSTS = {"127.0.0.1:8765", "localhost:8765"}
 DATA_DIR = Path.home() / "Library/Application Support/Ames"
 WEB_ROOT = Path(__file__).resolve().parent.parent / "web/dist"
@@ -74,6 +75,10 @@ class Session:
             kind = message.get("type") if isinstance(message, dict) else None
             if kind == "set_voice" and hasattr(tts, "set_voice"):
                 tts.set_voice(message.get("voice"))
+            elif kind == "text":
+                text = message.get("text")
+                if isinstance(text, str) and text.strip() and len(text) <= MAX_TYPED:
+                    await self.live.submit(text.strip())
 
         self.live = build_live(self.connection, stt, self.model, tts, self.conversation)
 

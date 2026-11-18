@@ -11,6 +11,7 @@ export type Session = {
   close: () => void;
   setMuted: (muted: boolean) => void;
   setVoice: (voice: Voice) => void;
+  sendText: (text: string) => void;
 };
 
 export function peerConfiguration(): RTCConfiguration {
@@ -147,5 +148,6 @@ export function startSession(
     ready: connect(), close,
     setMuted: (muted) => { stream?.getAudioTracks().forEach((track) => { track.enabled = !muted; }); },
     setVoice: (voice) => { if (!closed && channel.readyState === "open") channel.send(JSON.stringify({ type: "set_voice", voice })); },
+    sendText: (text) => { if (!closed && channel.readyState === "open") channel.send(JSON.stringify({ type: "text", text })); },
   };
 }

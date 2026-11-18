@@ -182,3 +182,21 @@ async def test_timer_ignores_silence_and_noise_during_the_reply():
         "transport_send": 20,
         "total": 720,
     }
+
+
+async def test_typed_turn_starts_its_own_clock_instead_of_reusing_the_last_speech_stop():
+    from pipecat.frames.frames import VADUserStoppedSpeakingFrame
+    from pipecat.observers.base_observer import FramePushed
+    from pipecat.processors.frame_processor import FrameDirection
+
+    from server.live import TypedTextFrame
+    from server.turn_log import TurnTimer
+
+    other = object()
+    timer = TurnTimer(object())
+    for at, frame in [
+        (0, VADUserStoppedSpeakingFrame()),
+        (5000, TypedTextFrame(text="hi", user_id="", timestamp="")),
+    ]:
+        await timer.on_push_frame(FramePushed(other, other, frame, FrameDirection.DOWNSTREAM, at))
+    assert timer.timestamps["turn_end"] == 5000

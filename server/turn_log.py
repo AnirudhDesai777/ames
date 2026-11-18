@@ -19,6 +19,7 @@ from pipecat.observers.base_observer import BaseObserver
 from pipecat.processors.frame_processor import FrameDirection
 
 from server.latency import STAGES
+from server.live import TypedTextFrame
 from server.prompt import load_system_prompt
 
 STAMPS = {
@@ -49,8 +50,9 @@ class TurnTimer(BaseObserver):
             self.last_stop = at
         elif isinstance(frame, TranscriptionFrame):
             if data.first_push and frame.text.strip():
+                typed = isinstance(frame, TypedTextFrame)
                 self.timestamps = {
-                    "turn_end": at if self.last_stop is None else self.last_stop,
+                    "turn_end": at if typed or self.last_stop is None else self.last_stop,
                     "stt_final": at,
                 }
         elif self.timestamps:

@@ -38,6 +38,10 @@ CRISIS_LINE = (
 FALLBACK = "I couldn't complete that request. Please try again."
 
 
+class TypedTextFrame(TranscriptionFrame):
+    """Typed input; SessionPrompt treats it as a finished user turn, not as STT text."""
+
+
 class Conversation:
     def __init__(self, events, log=None):
         self.events = events
@@ -98,6 +102,14 @@ class SessionPrompt(FrameProcessor):
                 conversation.user_speaking = False
                 conversation.show_speaking()
                 await self.push_frame(frame, direction)
+                await self.start_turn()
+                return
+            elif isinstance(frame, TypedTextFrame):
+                # Half-spoken STT text is dropped: the typed message replaces it, and
+                # user_speaking is cleared so the turn cannot wait for a stop that never comes.
+                self.pending = [frame.text]
+                conversation.user_speaking = False
+                conversation.show_speaking()
                 await self.start_turn()
                 return
             elif isinstance(frame, TranscriptionFrame) and frame.text.strip():
@@ -348,4 +360,11 @@ def build_live(connection, stt, model, tts, conversation):
         await runner.add_workers(worker)
         await runner.run()
 
+    async def submit(text):
+        # Same path as barge-in: the interruption cuts any reply, then the text starts a turn.
+        await worker.queue_frames(
+            [InterruptionFrame(), TypedTextFrame(text=text, user_id="", timestamp="")]
+        )
+
+    run.submit = submit
     return run
