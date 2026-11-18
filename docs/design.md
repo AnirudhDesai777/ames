@@ -507,7 +507,7 @@ ames uninstall                 # removes models and data
 
 ### 13.3 Slices
 
-Owner is who does the work: Codex, Claude Code (CC), or the maintainer (M). Each Codex slice has an agent-tier acceptance test that runs in CI. Maintainer-tier checks go under "Manual checks" in the PR.
+Agent names in this plan record the original assignments. For remaining work, the maintainer chooses the agent and harness per task as described in [AGENTS.md](../AGENTS.md). M denotes the maintainer and CC denotes Claude Code. Agent-tier acceptance tests run in CI. Maintainer-tier checks go under "Manual checks" in the PR.
 
 | Slice | Owner | Scope | Depends on | Acceptance |
 |---|---|---|---|---|
