@@ -16,6 +16,15 @@ the repository root:
 AMES_STUB=1 uv run --locked python -m server.app
 ```
 
+For real models, install the `mac` extra and set `AMES_LLM_MODEL` to a local mlx-lm
+model directory, exported in the shell or prefixed on the command. There is no
+default; the recommended model is the Qwen3.5 2B Ames fine-tune v1.2, MLX affine 4-bit (group size 64):
+
+```sh
+AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/qwen3.5-2b-ames-v1.2-mlx-4bit" \
+  uv run --locked --extra mac python -m server.app
+```
+
 The server binds only to `127.0.0.1:8765` and opens Chrome with a new random
 token in the URL fragment. It writes the token to
 `~/Library/Application Support/Ames/token` with mode 0600 inside a mode 0700
@@ -38,8 +47,9 @@ active session is left alone, and the log records `pipeline_setup_failed` with
 the exception type and its file and line. Failure logs never include exception
 messages, because those can hold user speech.
 
-`server.live` connects WebRTC input to Parakeet, the capped persona prompt,
-mlx-lm, control-token sanitation, sentence splitting, Pocket TTS, and WebRTC output.
+`server.live` connects WebRTC input to Parakeet, the capped persona prompt with
+the tool instructions, mlx-lm, tool-call handling, control-token sanitation,
+sentence splitting, Pocket TTS, and WebRTC output.
 Models stay loaded across connections; STT and TTS get fresh session processors
 and executors. Prompt assembly and token counting run on the LLM executor,
 which also owns generation and tokenizer access.
@@ -47,9 +57,10 @@ which also owns generation and tokenizer access.
 History contains user transcripts and only Ames sentences whose audio finished
 transport playback. A cut sentence and queued sentences are dropped. History
 and LLM prompt caches are cleared when the session ends. Conversation text is
-never written to disk (except with the dev-only `AMES_TURN_LOG=1`, see Turn log), no memory repository is opened, and the late block is
-empty. The prompt maps the UI's `ames` role to `assistant` and retains at most
-3000 history content tokens. Retrieval and extraction are planned for v1 and are not built yet.
+never written to disk (except with the dev-only `AMES_TURN_LOG=1`, see Turn log, and
+except for facts the model saves through the `remember` tool, see Memory storage). The
+late block is empty. The prompt maps the UI's `ames` role to `assistant` and retains at most
+3000 history content tokens. Automatic retrieval and extraction are planned for v1 and are not built yet.
 
 `server.events.Events` wraps transcript, speaking, and notice payloads
 from design 5.4 in Pipecat RTVI `server-message` envelopes. The initial
@@ -59,8 +70,8 @@ once at reply completion or interruption. A pipeline error ends the session
 with a notice that remains visible after disconnect. A temporary WebRTC
 `disconnected` state permits recovery.
 
-Until S6 (#34) supplies the full crisis exit, replies with `crisis=1` produce
-no TTS text or audio.
+A reply with `crisis=1` is not spoken; Ames speaks a fixed line telling the user to
+call their local emergency number or reach someone they trust.
 
 The original `server.echo` harness remains available for transport regression
 tests. `AMES_STUB=1` in the HTTP app instead uses fixed transcription, a stub
@@ -69,8 +80,7 @@ reply, and synthesized tone audio through the live pipeline.
 The committed fixture is a generated 200 ms, 440 Hz, mono PCM16 tone at 16 kHz.
 Tests need no models, GPU, microphone, browser, or network connection.
 
-The `mac` extra installs mlx-audio, mlx-lm, and Pipecat's Whisper extras only on macOS
-arm64. It is not needed for the echo or stub harness. HTTP and WebRTC integration
+The `mac` extra installs mlx-audio and mlx-lm only on macOS arm64. It is not needed for the echo or stub harness. HTTP and WebRTC integration
 tests use only local sockets; they do not contact external services. The ICE regression test
 also checks the underlying aiortc configuration, where `None` would enable STUN.
 
@@ -94,6 +104,16 @@ ratings for unknown turns and any rating other than `good` or `bad`.
 ```sh
 AMES_TURN_LOG=1 uv run --locked python -m server.app
 ```
+
+## Tools and web search
+
+The model can call `recall_memory`, `remember`, `web_search`, and `get_time`; calls are
+validated in `server.tool_calls` and run by `server.tools`. Web search is off by
+default. `GET` and `PUT /api/search` read and set the switch, which is saved in
+`~/Library/Application Support/Ames/search-enabled.json`. When on, queries go to a
+local SearXNG at `AMES_SEARXNG_URL` (default `http://localhost:8080`), and then to
+the Brave Search API if `BRAVE_API_KEY` is set. See [docs/searxng.md](../docs/searxng.md)
+and [docs/tool-calling.md](../docs/tool-calling.md).
 
 ## Recorded cascade and latency
 
@@ -139,10 +159,13 @@ For the manual run on the reference M4 Pro Mac with 24 GB RAM:
    and a complete mlx-lm model directory under the same `models/` directory.
    Use the revisions recorded in `docs/models.md`. This command never downloads
    weights.
-4. Run with the Mac idle, using the local LLM directory:
+4. Run with the Mac idle, using the local LLM directory. The recommended model is the
+   Qwen3.5 2B Ames fine-tune v1.2, MLX affine 4-bit (group size 64). Export
+   `AMES_LLM_MODEL` in the shell or prefix it as below; any local mlx-lm model
+   directory can be used instead:
 
    ```sh
-   AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/llm" \
+   AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/qwen3.5-2b-ames-v1.2-mlx-4bit" \
      uv run --locked --extra mac python -m server.latency
    ```
 
@@ -246,7 +269,8 @@ Changing memory facts affects only the final user message. The persona and retai
 history stay byte-identical until old history drops off the front. The builder
 copies messages and stores no history; the caller owns session boundaries and
 supplies only completed spoken text. Live sessions supply an empty late block;
-retrieval belongs to S5c, planned for v1 and not built yet. The eval runner shares the persona loader.
+automatic retrieval belongs to S5c, planned for v1 and not built yet. Live sessions
+build the assembler with `tools=True`, which appends `TOOL_INSTRUCTIONS`. The eval runner shares the persona loader.
 
 Run the prefix-stability and history-cap checks without models:
 
@@ -260,12 +284,13 @@ AMES_STUB=1 uv run --locked pytest -q server/tests/test_prompt.py
 `sqlite3` module. The default directory is
 `~/Library/Application Support/Ames/`, containing `ames.db`. Opening the store
 creates or repairs directory mode 0700 and database mode 0600, enables foreign
-keys and secure deletion on its connection, and initializes schema version 1
-and the permanent User entity (ID 1). Reopening preserves data; unsupported
-schema versions fail without migration. The server entry point already sets
+keys and secure deletion on its connection, and initializes schema version 2
+and the permanent User entity (ID 1). Opening a version 1 store upgrades it to
+version 2 by adding the `episode` table and its full-text index; other
+schema versions fail. The server entry point already sets
 umask 077 for SQLite's companion files. Call `close()` when finished.
 
-Create and use each `Repository` on the server's event loop thread (`sqlite3` enforces `check_same_thread`), never inside the LLM executor.
+Create and use each `Repository` on a single thread (`sqlite3` enforces `check_same_thread`), never inside the LLM executor. The memory tools open a fresh one inside each `asyncio.to_thread` call.
 
 `add_entity(type, name)` reuses a type plus trimmed, lowercased name;
 `add_entity("User")` always returns 1. `add_alias(alias, entity_id)` normalizes
@@ -297,8 +322,13 @@ when no session is active. It removes only marked turns outside that session,
 including turns marked before a restart, and leaves pending turns for extraction.
 Retention does not advance the user-delete epoch.
 
-S5a adds storage only. Durable turn recording, extraction, retrieval, and the
-memory API and panel are planned for v1 and not built yet. Run the repository,
+Free-text facts live in the `episode` table. `remember(fact)` stores one,
+`recall(query)` returns up to three matches ranked by full-text search,
+`list_episodes()` lists them newest first, and `delete_episode(id)` removes one and
+increments the delete epoch. The model reaches the first two through the
+`remember` and `recall_memory` tools, and the page uses `GET /api/memories` and
+`DELETE /api/memories/{id}` for its Saved memories panel. Durable turn recording,
+automatic extraction, and prompt retrieval are planned for v1 and not built yet. Run the repository,
 cascade-delete and retention checks without models or network access:
 
 ```sh

@@ -20,7 +20,8 @@ address bar. The first-run advisory must be acknowledged before starting a
 conversation. Its acknowledgement lives in `localStorage`; clearing site data
 shows it again. If storage is unavailable, acknowledgement lasts for that visit.
 
-Start conversation asks for the microphone, gathers local ICE candidates, then
+Start conversation asks for the microphone with echo cancellation, noise
+suppression, and automatic gain control, gathers local ICE candidates, then
 sends an offer with `X-Ames-Token` in a header. The token is never sent in a query
 string or offer body. `peerConfiguration()` supplies an empty `iceServers` list.
 Stub mode replies with tone audio through the live pipeline. Audio playback
@@ -33,6 +34,7 @@ The transcript stays after End session and clears when a new conversation starts
 Mute microphone disables the outgoing audio track; incoming audio keeps playing.
 End session closes the local peer and releases the microphone, including when
 connection setup is still pending. Neither control sends an HTTP request.
+The Web search switch is off by default; it reads and sets `/api/search` with the token header, and a `search` event shows a notice while a query runs. The Saved memories panel loads `/api/memories` when opened and deletes a memory with `DELETE /api/memories/{id}`.
 The Female voice and Male voice buttons work before and during a session. The choice is kept in `localStorage` and sent to the server as `set_voice` when a session connects and when it changes.
 
 `session_replaced` and `session_ended` close the session and keep the server's
