@@ -1,0 +1,385 @@
+# Proposals and open questions that are not maintainer decisions. Read .agent/README.md before editing.
+schema_version: 1
+candidates:
+  - id: CANDIDATE-001
+    status: NEEDS_DECISION
+    proposal: >-
+      Decide which LLM is current. DECISION-028 picked bolt-e4b, but README.md and server/README.md (PR #136)
+      recommend a Qwen3.5 2B Ames fine-tune (v1.2) and evals/llm_bakeoff.py pins the ames-v1 student
+      (commit 906f8d4). ames-v1 failed every held-out set on 2026-11-16 (commit ec84d13).
+    evidence:
+      - "PR #87"
+      - "PR #136"
+      - "git 906f8d4"
+      - "git ec84d13"
+      - "docs/design.md#3-owner-decisions-fixed (LLM size row)"
+      - "docs/models.md (no LLM row, issue #28 open)"
+    reason: No recorded maintainer decision replaces the 2026-11-09 pick, yet the runtime and docs moved on.
+    affected_files: [docs/design.md, docs/evals/llm-bakeoff.md, docs/models.md, README.md, server/README.md, evals/llm_bakeoff.py]
+    originating_task: Decision ledger setup
+    confidence: HIGH
+    conflicts: [DECISION-028, DECISION-011]
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-002
+    status: NEEDS_DECISION
+    proposal: >-
+      Confirm the web search backend: local SearXNG first with the Brave Search API as fallback through
+      BRAVE_API_KEY, as built in PR #133, or the hosted API with the user's own key proposed in issue #5.
+    evidence:
+      - "issue #5 (comment 2026-11-10 leaves backend choice to the maintainer)"
+      - "PR #133"
+      - "docs/searxng.md"
+    reason: Built without a recorded backend decision; issue #5 is still open.
+    affected_files: [docs/searxng.md, docs/design.md, server/tools.py]
+    originating_task: Decision ledger setup
+    confidence: HIGH
+    conflicts: [DECISION-016]
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-003
+    status: NEEDS_DECISION
+    proposal: >-
+      Decide the memory implementation: design section 6 (SQLite triples, closed predicates, idle-time
+      extraction) or PR #133 (schema version 2 episodes with FTS5, written by the remember tool and read by
+      recall_memory, /api/memories). Update design section 6 and issues #30, #31, #32, #107 to match.
+    evidence:
+      - "docs/design.md#6-memory"
+      - "PR #56"
+      - "PR #133"
+      - "server/README.md"
+    reason: DECISION-031 requires memory in v1 but the mechanism changed without a design edit or recorded approval.
+    affected_files: [docs/design.md, server/memory, docs/roadmap.md]
+    originating_task: Decision ledger setup
+    confidence: HIGH
+    conflicts: [DECISION-031]
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-004
+    status: NEEDS_DECISION
+    proposal: >-
+      Decide whether tools and web search are in v1. docs/tool-calling.md (PR #132) says it supersedes the
+      tool deferral in design sections 2 and 9.3, and PR #133 wired four tools (recall_memory, remember,
+      web_search, get_time) into live turns with search off by default. The roadmap still says nothing is built
+      until v1 ships.
+    evidence:
+      - "PR #132"
+      - "PR #133"
+      - "docs/tool-calling.md"
+      - "docs/design.md#2-goals-and-non-goals"
+      - "docs/design.md#93-network-policy"
+      - "docs/roadmap.md"
+    reason: >-
+      DECISION-016 defers web search to after v1; DECISION-038 and DECISION-045 name web lookup as a core use
+      but do not say v1. No maintainer approval of the tool protocol is recorded, and the tool eval set has no
+      frozen thresholds.
+    affected_files: [docs/design.md, docs/roadmap.md, docs/tool-calling.md, server/tools.py, server/tool_calls.py]
+    originating_task: Decision ledger setup
+    confidence: HIGH
+    conflicts: [DECISION-016, DECISION-038, DECISION-045]
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-005
+    status: NEEDS_DECISION
+    proposal: >-
+      Decide whether a fine-tune ships as an adapter (design section 3 License row) or as a full MLX model
+      directory (what the runtime loads per README and PR #136), and whether it is published at all.
+    evidence:
+      - "docs/design.md#3-owner-decisions-fixed (License row)"
+      - "README.md"
+      - "PR #136"
+    reason: No publishing decision is recorded and the two records disagree.
+    affected_files: [docs/design.md, README.md, docs/models.md]
+    originating_task: Decision ledger setup
+    confidence: HIGH
+    conflicts: [DECISION-006]
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-006
+    status: NEEDS_DECISION
+    proposal: Decide whether the fine-tuned LLM is in v1 or after v1, and retitle issue #29 (still "for tone and mood").
+    evidence:
+      - "docs/design.md#2-goals-and-non-goals"
+      - "docs/roadmap.md"
+      - "issue #29"
+      - "docs/tool-calling.md (four 2B-class models to be fine-tuned)"
+      - "PR #108 (asked to rescope issue #29)"
+    reason: DECISION-011 puts the smaller fine-tuned LLM after v1, but the runtime already uses a fine-tune.
+    affected_files: [docs/design.md, docs/roadmap.md]
+    originating_task: Decision ledger setup
+    confidence: MEDIUM
+    conflicts: [DECISION-011]
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-007
+    status: NEEDS_DECISION
+    proposal: Keep Claude as the held-out eval judge while GLM judges training samples.
+    evidence:
+      - "Lead agent proposal, 2026-11-22 session notes (not approved)"
+    reason: Lead agent proposal; consistent with DECISION-025 and DECISION-052 but not confirmed by the maintainer.
+    affected_files: [evals/llm_bakeoff.py, docs/design.md]
+    originating_task: Distillation
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-008
+    status: NEEDS_DECISION
+    proposal: The base for the mobile student stays Qwen3.5-2B, which fits a phone at about 1.2 GB in 4-bit.
+    evidence:
+      - "Lead agent proposal, 2026-11-22 session notes (not approved)"
+    reason: Lead agent proposal tied to DECISION-050; overlaps the open current-LLM question.
+    affected_files: [evals/llm_bakeoff.py, README.md]
+    originating_task: Distillation
+    confidence: MEDIUM
+    conflicts: [DECISION-028]
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-009
+    status: NEEDS_DECISION
+    proposal: Before training, measure GLM 5.3 agreement with Claude verdicts on student replies to dev prompts, never held-out ones.
+    evidence:
+      - "Lead agent proposal, 2026-11-22 session notes (not approved)"
+      - "Eval review 2026-11-22: the ames-v1 replies come from held-out sets, so calibrating on them would expose held-out data to the training judge"
+    reason: Lead agent proposal to validate the DECISION-052 judge before relying on it.
+    affected_files: [evals]
+    originating_task: Distillation
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-010
+    status: NEEDS_DECISION
+    proposal: Start with best-of-n, then preference pairs (DPO), before full GRPO.
+    evidence:
+      - "Lead agent proposal, 2026-11-22 session notes (not approved)"
+    reason: Lead agent proposal for staging the DECISION-051 on-policy method.
+    affected_files: []
+    originating_task: Distillation
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-011
+    status: NEEDS_DECISION
+    proposal: Keep v1 Mac-only and choose models that also fit a phone later, rather than moving iPhone into v1.
+    evidence:
+      - "Lead agent proposal, 2026-11-22 session notes (not approved)"
+    reason: Lead agent proposal on how DECISION-050 interacts with DECISION-002 and DECISION-037.
+    affected_files: [docs/design.md, docs/roadmap.md]
+    originating_task: Product direction
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-012
+    status: NEEDS_DECISION
+    proposal: >-
+      Voice framework is Pipecat with SmallWebRTC, empty iceServers so no STUN is contacted, and Smart Turn
+      v3.2 plus Silero VAD from pipecat-ai. Rejected: LiveKit Agents and a custom build.
+    evidence:
+      - "docs/design.md#12-alternatives-considered"
+      - "docs/models.md"
+      - "PR #39"
+      - "PR #126"
+    reason: In merged design and code, but no record states the maintainer decided it.
+    affected_files: [docs/design.md, server]
+    originating_task: Decision ledger setup
+    confidence: HIGH
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-013
+    status: NEEDS_DECISION
+    proposal: The crisis flag rides in the reply's control token; a separate classifier on the critical path is rejected.
+    evidence:
+      - "docs/design.md#12-alternatives-considered"
+      - "docs/design.md#7-the-control-token"
+    reason: Design text with no record of the maintainer deciding it.
+    affected_files: [docs/design.md, server/control_tokens.py]
+    originating_task: Decision ledger setup
+    confidence: HIGH
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-014
+    status: NEEDS_DECISION
+    proposal: >-
+      LLM bake-off candidate set and sampling: candidates chosen by Claude Code from a Hugging Face check,
+      thinking mode off, temperature 0.7 and top-p 0.9, with the production path matching (PR #98).
+    evidence:
+      - "issue #12"
+      - "docs/evals/llm-bakeoff.md"
+      - "PR #98"
+    reason: Agent-chosen; no maintainer approval recorded beyond merging.
+    affected_files: [evals/llm_bakeoff.py, server/llm.py]
+    originating_task: LLM bake-off
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-015
+    status: NEEDS_DECISION
+    proposal: >-
+      Latency budget and barge-in: 1130 ms from Smart Turn end to first audio frame, p50 at most 1.2 s, p90 at
+      most 1.8 s idle and 2.5 s under load; barge-in after 300 ms of VAD speech, audio stops within 150 ms,
+      unplayed sentences drop from history.
+    evidence:
+      - "docs/design.md#52-latency"
+      - "docs/design.md#53-interruption-barge-in"
+    reason: >-
+      Design text only. The latency targets may fall under the section 10 thresholds approved in DECISION-027;
+      the barge-in rules have no record of approval.
+    affected_files: [docs/design.md, server/latency.py]
+    originating_task: Decision ledger setup
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-016
+    status: NEEDS_DECISION
+    proposal: >-
+      Local server security policy: one listener on 127.0.0.1:8765, Host and Origin checks, no CORS, a random
+      per-install token in the URL fragment, bundled assets, models downloaded only by ames setup at pinned
+      revisions and hashes, offline at runtime, logs with error codes and timings only, encryption at rest in v1.x.
+    evidence:
+      - "docs/design.md#9-security-and-privacy"
+      - "PR #40"
+      - "https://app.notion.com/p/41179cd5f9f481d7a726de206bac30df (article: token in URL fragment)"
+    reason: Design text and agent-written article; no record of the maintainer deciding it. Web search (PR #133) is a runtime network exception.
+    affected_files: [docs/design.md, server/app.py]
+    originating_task: Decision ledger setup
+    confidence: HIGH
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-017
+    status: NEEDS_DECISION
+    proposal: >-
+      Install and build conventions: uv tool install ames-voice with ames setup, ames, ames open and ames
+      uninstall; Python 3.12 with a uv lockfile; Node 22 with Vite and TypeScript; MLX as an optional mac extra;
+      every service has a stub (AMES_STUB=1) and CI runs on ubuntu with stubs.
+    evidence:
+      - "docs/design.md#13-build"
+      - ".github/workflows/ci.yml"
+    reason: Design text with no maintainer decision recorded. The test rule itself is covered by DECISION-049.
+    affected_files: [docs/design.md, pyproject.toml, .github/workflows/ci.yml]
+    originating_task: Decision ledger setup
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-018
+    status: NEEDS_DECISION
+    proposal: >-
+      Backlog and pipeline roadmap: v1 cascade, v2 full duplex (#8), v3 voice cloning (#9); NVIDIA Docker
+      Compose (#6), preference tuning (#7), settings panel, Firefox and Safari, voice "forget that" and
+      encryption at rest are after v1; nothing else is built until v1 ships.
+    evidence:
+      - "docs/roadmap.md"
+      - "issue #6"
+      - "issue #7"
+      - "issue #8"
+      - "issue #9"
+      - "https://app.notion.com/p/41179cd5f9f48173b1a6eb181b310fe4 (hub table: pipeline)"
+    reason: Agent-written roadmap and hub summary; the build-order line is contradicted by PR #132 and PR #133.
+    affected_files: [docs/roadmap.md]
+    originating_task: Decision ledger setup
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-019
+    status: NEEDS_DECISION
+    proposal: >-
+      Pick a new product name before public launch, with a name check, together with the persona name question.
+      A rename touches the persona prompt, UI copy, data directory, token header and repo name.
+    evidence:
+      - "issue #101 record: \"The maintainer spoke with Ames on 2026-11-10 and finds the name does not roll off the tongue and is not catchy.\""
+      - "issue #68"
+    reason: The maintainer raised the problem; no name or process is decided.
+    affected_files: [persona/ames.md, web, server]
+    originating_task: Product name
+    confidence: HIGH
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-020
+    status: NEEDS_DECISION
+    proposal: >-
+      Browser audio: ask for echoCancellation, noiseSuppression and autoGainControl, and start a reply only when
+      Smart Turn ends the user turn rather than at each STT pause.
+    evidence:
+      - "PR #126"
+      - "PR #129"
+      - "issue #122"
+    reason: Merged fixes with no recorded maintainer decision.
+    affected_files: [web, server/live.py]
+    originating_task: Decision ledger setup
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-021
+    status: NEEDS_DECISION
+    proposal: >-
+      Public launch checklist (issue #10): gates pass, one-command install, offline verified, secret scan,
+      SECURITY.md, NOTICE with model licences and CC-BY attribution, name check, README with hardware, branch
+      protection on, demo video and article. The maintainer ticks each item.
+    evidence:
+      - "issue #10"
+      - "docs/models.md"
+    reason: Agent-written checklist with no recorded maintainer approval.
+    affected_files: [README.md, docs/models.md]
+    originating_task: Launch readiness
+    confidence: MEDIUM
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-022
+    status: NEEDS_DECISION
+    proposal: Load and unload models from the UI (#123) and show device stats during a session (#124), each after a design note.
+    evidence:
+      - "issue #123"
+      - "issue #124"
+    reason: Backlog issues with no recorded decision.
+    affected_files: [web, server]
+    originating_task: Backlog
+    confidence: LOW
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-023
+    status: NEEDS_DECISION
+    proposal: >-
+      Project management notes: new ideas go to the backlog unless v1 fails without them; at most one or two
+      items in progress; milestones M0 to M4; done means tests pass, PR reviewed, docs updated, and the
+      maintainer can explain the change in two sentences.
+    evidence:
+      - "https://app.notion.com/p/41179cd5f9f481c5a35cd68edb26c6ec"
+    reason: Agent-written notes. AGENTS.md#scope (DECISION-049) already covers building only what the task asks.
+    affected_files: [AGENTS.md]
+    originating_task: Decision ledger setup
+    confidence: LOW
+    conflicts: []
+    explicit_user_feedback: false
+
+  - id: CANDIDATE-024
+    status: NEEDS_DECISION
+    proposal: >-
+      Refresh stale design text: section 5.4 interfaces (client message text, rating, /api/rate, /api/memories,
+      /api/search, search toggle), section 13.3 slice rows that still name Qwen TTS and Whisper, and the iPhone
+      memory sizing in issue #102 measured before Pocket TTS and the 2B LLM.
+    evidence:
+      - "docs/design.md#54-interfaces"
+      - "docs/design.md#133-slices"
+      - "issue #102"
+      - "PR #119"
+      - "PR #133"
+      - "PR #137"
+    reason: Documentation drift exposed by later merged work; not itself a product decision.
+    affected_files: [docs/design.md]
+    originating_task: Decision ledger setup
+    confidence: HIGH
+    conflicts: []
+    explicit_user_feedback: false
