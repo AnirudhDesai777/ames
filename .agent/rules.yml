@@ -1,0 +1,393 @@
+# Rules derived from APPROVED maintainer decisions. Read .agent/README.md before editing.
+# IDs are stable and never reused.
+schema_version: 1
+rules:
+  - id: PRODUCT-001
+    title: v1 is macOS on Apple Silicon and Chrome only
+    strength: MUST
+    rule: Do not add Windows, Linux, NVIDIA, Docker, Firefox or Safari support to v1.
+    rationale: The maintainer fixed the v1 platform; Docker cannot reach the Mac GPU.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-002"]
+    enforcement:
+      status: review-only
+      mechanism: PR review against docs/design.md section 3.
+      limitations: Nothing blocks platform code automatically.
+    documentation: docs/design.md#3-owner-decisions-fixed
+
+  - id: PRODUCT-002
+    title: No moods, laughing or emotional rendering
+    strength: MUST
+    rule: >-
+      Do not add moods, laughter, sentiment or mood detection, or emotional rendering. The control token
+      carries only the crisis flag. Do not build for feelings or companion use cases.
+    rationale: Ames is a thought partner for discussing ideas and research.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-036", ".agent/learning/decisions.yml#DECISION-045"]
+    enforcement:
+      status: partial
+      mechanism: server/tests/test_control_tokens.py treats a mood field as a malformed control token.
+      limitations: Persona and UI changes are checked only in review.
+    documentation: docs/design.md#7-the-control-token
+
+  - id: PRODUCT-003
+    title: Memory across sessions is required for v1
+    strength: MUST
+    rule: Do not cut or defer cross-session memory from v1.
+    rationale: Reversed the v6 deferral; how memory is implemented is CANDIDATE-003.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-031"]
+    enforcement:
+      status: review-only
+      mechanism: v1 release gates in docs/design.md section 10.6 include memory.
+      limitations: No check prevents a PR from removing memory.
+    documentation: docs/roadmap.md
+
+  - id: PRODUCT-004
+    title: Supported minimum is 24 GB with one model set
+    strength: MUST
+    rule: Do not claim 16 GB support or add a reduced model profile.
+    rationale: No 16 GB machine is available to test.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-012"]
+    enforcement:
+      status: review-only
+      mechanism: PR review of README and docs/design.md section 4.
+      limitations: None automated.
+    documentation: docs/design.md#4-hardware
+
+  - id: PRODUCT-005
+    title: Typed input is untrusted and bounded
+    strength: MUST
+    rule: >-
+      Typed text must be non-empty after strip and at most 2000 characters, work whenever a session is
+      connected regardless of mute, and cut off a reply in progress.
+    rationale: Maintainer decisions on issue #134.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-048"]
+    enforcement:
+      status: partial
+      mechanism: server/tests/test_app.py covers the typed message limits (MAX_TYPED in server/app.py).
+      limitations: UI behaviour is checked in review and manual checks.
+    documentation: null
+
+  - id: PRODUCT-006
+    title: Turn log stays opt-in
+    strength: MUST
+    rule: The turn log is written only when AMES_TURN_LOG=1, with a 0700 directory and 0600 files.
+    rationale: It stores the user's words; it exists for the maintainer's fine-tuning and preference data.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-047"]
+    enforcement:
+      status: partial
+      mechanism: server/tests/test_turn_log.py.
+      limitations: Does not stop new code paths from logging elsewhere.
+    documentation: server/README.md
+
+  - id: PRODUCT-007
+    title: Persona advice rules
+    strength: SHOULD
+    rule: >-
+      She swears only when the user does, offers at most one question or suggestion per turn as a judgment,
+      does not flatter, and keeps replies to three sentences unless the user asks for depth.
+    rationale: Confirmed by the maintainer for persona v8.1.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-041"]
+    enforcement:
+      status: partial
+      mechanism: Persona eval rubric judged by Claude Code on held-out sets.
+      limitations: Judged on frozen sets only, not every prompt change.
+    documentation: docs/design.md#82-advice-rules
+
+  - id: PRODUCT-008
+    title: History trimming keeps the cache prefix stable
+    strength: SHOULD
+    rule: >-
+      Trim history in chunks (to about 2000 tokens past 3000) and summarise old turns while idle, on the same
+      connection and session_id; the summary never feeds memory extraction.
+    rationale: Per-turn trimming broke the prompt cache (4111 ms prefill against a 150 ms budget).
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-029", ".agent/learning/decisions.yml#DECISION-039"]
+    enforcement:
+      status: review-only
+      mechanism: Stub latency run in CI and PR review.
+      limitations: Summarising is not built yet.
+    documentation: docs/design.md#55-context-management
+
+  - id: SAFETY-001
+    title: No topic refusals and exactly five guardrails
+    strength: MUST
+    rule: >-
+      Do not add topic refusals or an age gate, and do not add or drop guardrails beyond G1 to G5 without a
+      new maintainer decision.
+    rationale: Content policy fixed by the maintainer.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-004"]
+    enforcement:
+      status: partial
+      mechanism: Frozen guardrail and persona eval sets (zero edgy refusals gate).
+      limitations: Evals run on real models outside CI.
+    documentation: docs/design.md#83-guardrails
+
+  - id: SAFETY-002
+    title: Crisis turn speaks one fixed line and ends the session
+    strength: MUST
+    rule: >-
+      On crisis=1 discard the reply, speak the fixed line from persona/ames.md, and end the session. No sticky
+      crisis mode, hotline lists or phone numbers in the repo.
+    rationale: Maintainer decision on the crisis response.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-013"]
+    enforcement:
+      status: partial
+      mechanism: Server tests on the crisis path and the frozen crisis eval set.
+      limitations: Detection quality is measured only by the real-model eval.
+    documentation: docs/design.md#84-crisis-exit
+
+  - id: SAFETY-003
+    title: First-run advisory
+    strength: MUST
+    rule: Keep the first-run notice that Ames is an AI with no cloud monitoring and her words carry no guarantee.
+    rationale: Guardrail G5.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-005"]
+    enforcement:
+      status: review-only
+      mechanism: PR review and launch checklist.
+      limitations: None automated.
+    documentation: docs/design.md#3-owner-decisions-fixed
+
+  - id: SAFETY-004
+    title: Web search is opt-in and visible
+    strength: MUST
+    rule: Web search stays off by default, needs the user to turn it on, and shows an indicator on every search.
+    rationale: Queries leave the machine. Whether search is in v1 at all is CANDIDATE-004.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-016"]
+    enforcement:
+      status: partial
+      mechanism: server/tests/test_search_backend.py and test_runtime_tools.py cover the search path.
+      limitations: The default-off UI toggle is checked in review.
+    documentation: docs/design.md#93-network-policy
+
+  - id: MODEL-001
+    title: TTS is Pocket TTS with azelma and marius
+    strength: MUST
+    rule: >-
+      Use Pocket TTS 100M with azelma (default, female) and marius (male) and one TTS with no fallback voice.
+      Do not add cosette or other Expresso or EARS voices, emotion controls, or voice cloning, and do not reopen
+      the TTS choice without a new maintainer decision.
+    rationale: Qwen3-TTS was slow and tiring in conversation; the rejected voices are CC BY-NC.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-042", ".agent/learning/decisions.yml#DECISION-015"]
+    enforcement:
+      status: partial
+      mechanism: server/tests/test_tts.py covers the voice presets.
+      limitations: A new voice or model would only be caught in review.
+    documentation: docs/models.md
+
+  - id: MODEL-002
+    title: STT is Parakeet TDT 0.6B v2
+    strength: MUST
+    rule: Do not replace Parakeet without a new bake-off and maintainer decision.
+    rationale: Chosen for latency headroom over a one-error WER gap.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-022"]
+    enforcement:
+      status: review-only
+      mechanism: Pinned revision in docs/models.md and PR review.
+      limitations: None automated.
+    documentation: docs/evals/voice-bakeoff.md
+
+  - id: MODEL-003
+    title: Models run on MLX in the server process
+    strength: MUST
+    rule: Run models with MLX builds inside the server process; do not add an HTTP model server, Ollama or llama.cpp.
+    rationale: A second listener needs securing and loses cache and cancel control.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-003"]
+    enforcement:
+      status: review-only
+      mechanism: PR review.
+      limitations: None automated.
+    documentation: docs/design.md#12-alternatives-considered
+
+  - id: MODEL-004
+    title: Choose models by eval numbers
+    strength: MUST
+    rule: A model choice cites bake-off or eval results, not impressions.
+    rationale: The maintainer wants numbers, not vibes.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-010"]
+    enforcement:
+      status: review-only
+      mechanism: PR review of model changes.
+      limitations: None automated.
+    documentation: docs/evals/llm-bakeoff.md
+
+  - id: MODEL-005
+    title: Distillation is on-policy and reply-level
+    strength: SHOULD
+    rule: >-
+      The student generates replies and a teacher grades whole replies. GLM 5.3 (opencode-go/glm-5.3) judges
+      training samples. A fine-tune ships only if it beats the base model's held-out scores.
+    rationale: Off-policy distillation did not work; reply-level grading frees the teacher from the student's tokenizer.
+    source:
+      type: USER_DECISION
+      references:
+        - ".agent/learning/decisions.yml#DECISION-051"
+        - ".agent/learning/decisions.yml#DECISION-052"
+        - ".agent/learning/decisions.yml#DECISION-011"
+    enforcement:
+      status: review-only
+      mechanism: PR review of training code.
+      limitations: Training runs outside the repo CI.
+    documentation: null
+
+  - id: EVAL-001
+    title: Claude Code judges held-out evals
+    strength: MUST
+    rule: >-
+      Held-out eval verdicts come from Claude Code itself, not a subagent or local judge model. Verdict files
+      are committed and the score step replays them.
+    rationale: A 14B local judge misjudged G3 refusals.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-025"]
+    enforcement:
+      status: partial
+      mechanism: The bake-off runner records judge requests and replays committed verdicts; CI uses a stub judge.
+      limitations: Nothing verifies who wrote a verdict file.
+    documentation: docs/design.md#10-evaluation
+
+  - id: EVAL-002
+    title: Eval sets and gates are frozen
+    strength: MUST
+    rule: Do not change a frozen eval set, split or threshold without its own issue and a maintainer decision.
+    rationale: Gates must stay comparable across models.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-027", ".agent/learning/decisions.yml#DECISION-018"]
+    enforcement:
+      status: review-only
+      mechanism: AGENTS.md repo map rule and PR review.
+      limitations: No checksum guards the sets.
+    documentation: docs/design.md#10-evaluation
+
+  - id: PROCESS-001
+    title: Git and PR rules
+    strength: MUST
+    rule: Follow AGENTS.md#git. Never push to main; no Co-Authored-By trailer or tool attribution.
+    rationale: The private repo has no branch protection.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-007", ".agent/learning/decisions.yml#DECISION-049"]
+    enforcement:
+      status: partial
+      mechanism: .githooks/pre-push blocks pushes to main.
+      limitations: Needs core.hooksPath set per clone; commit text is checked by hand (DECISION-020).
+    documentation: AGENTS.md#git
+
+  - id: PROCESS-002
+    title: No maintainer name in the repo
+    strength: MUST
+    rule: Write "the maintainer" in code, docs, commits, PRs and issues. Git author metadata is fine.
+    rationale: Maintainer instruction.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-009"]
+    enforcement:
+      status: review-only
+      mechanism: PR review.
+      limitations: None automated.
+    documentation: null
+
+  - id: PROCESS-003
+    title: Tests need no GPU, microphone, network or models
+    strength: MUST
+    rule: Follow AGENTS.md#tests. Stub models and use WAV fixtures; hardware checks go under "Manual checks".
+    rationale: CI runs on ubuntu with stubs.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-049"]
+    enforcement:
+      status: partial
+      mechanism: CI runs pytest on ubuntu-latest with AMES_STUB=1.
+      limitations: A test that silently skips without hardware still passes.
+    documentation: AGENTS.md#tests
+
+  - id: PROCESS-004
+    title: The maintainer owns design decisions
+    strength: MUST
+    rule: >-
+      Agents do not settle design questions. The maintainer chooses the coding agent and harness per task and
+      merges PRs.
+    rationale: Retired fixed orchestration loop; Codex dropped.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-049", ".agent/learning/decisions.yml#DECISION-044"]
+    enforcement:
+      status: review-only
+      mechanism: Maintainer merges every PR.
+      limitations: None automated.
+    documentation: AGENTS.md#workflow
+
+  - id: PROCESS-005
+    title: Use the decision ledger
+    strength: MUST
+    rule: >-
+      Read the ledger before work on a decided topic. Record new proposals as candidates; only an explicit
+      maintainer decision becomes a decision.
+    rationale: Stops agents reopening settled choices or treating repetition as approval.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-053"]
+    enforcement:
+      status: partial
+      mechanism: evals/tests/test_agent_ledger.py checks ledger structure and links.
+      limitations: Cannot check that an approval is real.
+    documentation: .agent/README.md
+
+  - id: PROCESS-006
+    title: Keep Langfuse and Docker Desktop off during real-model runs
+    strength: SHOULD
+    rule: Do not run Docker Desktop or Langfuse while the real models run on the 24 GB Mac.
+    rationale: Memory headroom on the reference machine.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-033"]
+    enforcement:
+      status: review-only
+      mechanism: Operator practice.
+      limitations: None automated.
+    documentation: null
+
+  - id: PROCESS-007
+    title: CI does not measure model quality
+    strength: SHOULD
+    rule: Do not re-add a PR-title CI check or a stub eval step that implies CI measures model quality.
+    rationale: The maintainer checks titles by hand and quality comes from real-model evals.
+    source:
+      type: USER_DECISION
+      references: [".agent/learning/decisions.yml#DECISION-020"]
+    enforcement:
+      status: review-only
+      mechanism: PR review of .github/workflows.
+      limitations: None automated.
+    documentation: null

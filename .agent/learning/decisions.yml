@@ -1,0 +1,884 @@
+# Maintainer decisions. Read .agent/README.md before editing.
+# Only decisions whose approval traces to the maintainer belong here.
+schema_version: 1
+decisions:
+  - id: DECISION-001
+    date: "2026-11-07"
+    status: SUPERSEDED
+    topic: Original product concept
+    decision: >-
+      The first design draft made Ames a voice companion with three roles (thought partner, study buddy,
+      emotional companion), a sassy and warm personality, six moods, laughs and sighs through Orpheus tags,
+      Qwen3-8B as the LLM, a 16 GB minimum, and Chrome plus Safari. Each part was later replaced; see the
+      decisions that cite this one.
+    evidence:
+      - "PR #11 (first design draft, merged)"
+      - "git 0397e6e docs/design.md (first draft)"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-036
+    originating_task: Design v1
+
+  - id: DECISION-002
+    date: "2026-11-07"
+    status: APPROVED
+    topic: v1 platform
+    decision: >-
+      v1 targets macOS on Apple Silicon and Chrome only. Windows, Linux, NVIDIA and Docker move to v1.1 and
+      Firefox and Safari to v1.x. Docker was rejected for the main install because it cannot reach the Mac GPU.
+    evidence:
+      - "docs/design.md#3-owner-decisions-fixed (Platform row; section says 'Decided by the maintainer and not open for review')"
+      - "docs/roadmap.md"
+      - "PR #14"
+      - "issue #6"
+      - "https://app.notion.com/p/41179cd5f9f4817e8177ca979e9acda9"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v4
+
+  - id: DECISION-003
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Model runtime
+    decision: >-
+      Every model with an MLX build runs on MLX inside the single server process, the LLM through mlx-lm.
+      Rejected: an mlx-lm HTTP server as a child process (a second listener to secure, less cache and cancel
+      control), Ollama, and llama.cpp.
+    evidence:
+      - "docs/design.md#3-owner-decisions-fixed (Runtime row)"
+      - "docs/design.md#12-alternatives-considered"
+      - "https://app.notion.com/p/41179cd5f9f4817e8177ca979e9acda9"
+      - "https://app.notion.com/p/41179cd5f9f481d7a726de206bac30df (article: LLM runs in-process)"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v4
+
+  - id: DECISION-004
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Content policy and guardrails
+    decision: >-
+      No topic refusals and no age gate. Exactly five guardrails: G1 crisis exit, G2 no sexual content
+      involving minors, G3 no step-by-step mass-casualty weapon instructions, G4 says she is an AI when
+      sincerely asked, G5 first-run advisory. G2 and G4 wording was trimmed in design v8.
+    evidence:
+      - "docs/design.md#3-owner-decisions-fixed (Content and Guardrails rows)"
+      - "docs/design.md#83-guardrails"
+      - "https://app.notion.com/p/41179cd5f9f4815d8d32ceea686e77bb"
+      - "https://app.notion.com/p/41179cd5f9f48173b1a6eb181b310fe4 (hub table: no topic refusals, no age gate, first-run advisory)"
+      - "PR #111"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v4
+
+  - id: DECISION-005
+    date: "2026-11-07"
+    status: APPROVED
+    topic: First-run advisory
+    decision: >-
+      The first run shows a notice that Ames is an AI with no cloud monitoring, nobody can guarantee what she
+      says, and the user should take it with a grain of salt.
+    evidence:
+      - "docs/design.md#3-owner-decisions-fixed (Advisory row)"
+      - "issue #10"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v4
+
+  - id: DECISION-006
+    date: "2026-11-07"
+    status: APPROVED
+    topic: License
+    decision: >-
+      The code is Apache-2.0, a default that may change before launch. Users download base models from their
+      source and Ames redistributes no base weights. Whether a fine-tune is published as an adapter or a full
+      model is open (see candidates).
+    evidence:
+      - "docs/design.md#3-owner-decisions-fixed (License row)"
+      - "docs/models.md"
+      - "https://app.notion.com/p/41179cd5f9f4814ba2a3ccb42e1201b8"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v4
+
+  - id: DECISION-007
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Git rules and repo visibility
+    decision: >-
+      The repo stays private until launch and a local pre-push hook blocks pushes to main because the private
+      repo has no branch protection. Work goes on type/topic branches with Conventional Commits, squash merges
+      use the PR title as the commit, and commits and PRs carry no Co-Authored-By trailer or tool attribution.
+    evidence:
+      - "AGENTS.md#git"
+      - "PR #11 (merged)"
+      - "PR #138 (merged, restates the git rules)"
+      - "https://app.notion.com/p/41179cd5f9f4814ba2a3ccb42e1201b8"
+      - ".githooks/pre-push"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Repo setup
+
+  - id: DECISION-008
+    date: "2026-11-07"
+    status: SUPERSEDED
+    topic: Build roles
+    decision: >-
+      Claude Code orchestrates and reviews, Codex builds each issue with the ponytail skill, the EGM plugin
+      reviews, and the maintainer merges. Claude later ran Codex directly after the launcher agent went idle
+      three times without pushing.
+    evidence:
+      - "PR #11 (AGENTS.md, merged)"
+      - "https://app.notion.com/p/41179cd5f9f48173b1a6eb181b310fe4 (hub table: build process)"
+      - "https://app.notion.com/p/41179cd5f9f481d7a726de206bac30df (article: Claude runs Codex directly)"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-044
+    originating_task: Repo setup
+
+  - id: DECISION-009
+    date: "2026-11-07"
+    status: APPROVED
+    topic: No maintainer name in repo
+    decision: >-
+      Never write the maintainer's name in code, docs, commits, PRs or issues; say "the maintainer". Git author
+      metadata is fine.
+    evidence:
+      - "Review comment on PR #11"
+      - "Lead agent session notes, 2026-11-07"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Repo setup
+
+  - id: DECISION-010
+    date: "2026-11-07"
+    status: APPROVED
+    topic: LLM size and choosing models by numbers
+    decision: >-
+      Use a smaller middle LLM than Qwen3-8B, fine-tuned with a teacher approach, and choose it with benchmarks
+      and evals rather than impressions. A smaller model also lowers the RAM need.
+    evidence:
+      - "https://app.notion.com/p/41179cd5f9f48196b501c4791b7c9cde"
+      - "Maintainer: \"for the cascading model, lets reduce the middle llm. qwen 3 8b is an overkill, a smaller model which can be fintuned using teach decision approach will have the same capaibility. we do need to design benchmarks and evals so that we know the model which we are choosing is based on numbers and not on vibes, and benchamrk and eval design is a big part of agntic design\""
+      - "Maintainer: \"this will also reduce the amount of ram we need\""
+      - "issue #12"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v1 review
+
+  - id: DECISION-011
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Slice D fine-tune
+    decision: >-
+      Run the bake-off of small base models first and fine-tune the winner by teacher-student distillation
+      (slice D). D ships only if it beats the winner's own bake-off scores on held-out sets, and it is off the
+      v1 path unless a v1 gate needs it; the smaller fine-tuned LLM is after v1 (#29). The training method
+      (teacher writes replies, off-policy) was replaced by DECISION-051; the ship rule here still stands.
+    evidence:
+      - "docs/design.md#3-owner-decisions-fixed (Fine-tuning row)"
+      - "https://app.notion.com/p/41179cd5f9f481219a58faa5363a1f11"
+      - "issue #29"
+      - "docs/roadmap.md"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v4
+
+  - id: DECISION-012
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Minimum hardware
+    decision: >-
+      The supported minimum is Apple Silicon with 24 GB; the reference machine is a MacBook Pro M4 Pro 24 GB.
+      16 GB is not claimed because no 16 GB machine is available to test, so S8 is a load test only. There is
+      one model set and no reduced profile.
+    evidence:
+      - "PR #16 (design v4, recording maintainer decisions from 2026-11-07)"
+      - "docs/design.md#4-hardware"
+      - "docs/design.md#3-owner-decisions-fixed (Minimum RAM row)"
+      - "issue #4"
+      - "https://app.notion.com/p/41179cd5f9f481cca6dfd0a38d1beb89"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v4
+
+  - id: DECISION-013
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Crisis exit
+    decision: >-
+      On a crisis=1 turn the server discards the reply, speaks one fixed line from persona/ames.md pointing to
+      local emergency services, and ends the session. Rejected: sticky crisis mode, a per-country hotline list,
+      locale mapping, and a bare refusal line. No phone numbers live in the repo.
+    evidence:
+      - "https://app.notion.com/p/41179cd5f9f481cea0b2e38a52856a84 (row asked by the maintainer)"
+      - "PR #16"
+      - "docs/design.md#84-crisis-exit"
+      - "issue #34"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v4
+
+  - id: DECISION-014
+    date: "2026-11-07"
+    status: SUPERSEDED
+    topic: Orpheus-only TTS
+    decision: >-
+      Orpheus only, with no Kokoro fallback; if Orpheus fails the startup self-test the server does not start
+      and that Mac is unsupported.
+    evidence:
+      - "https://app.notion.com/p/41179cd5f9f4810a9c4cdcff2b71f3f2 (row asked by the maintainer)"
+      - "PR #16"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-015
+    originating_task: Design v4
+
+  - id: DECISION-015
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Voice models chosen by bake-off, one TTS
+    decision: >-
+      STT and TTS are picked by a measured bake-off plus blind listening. There is one TTS and no fallback
+      voice; if it fails its startup self-test the server refuses to start, and a Mac too slow for it is
+      unsupported. A Kokoro fallback was rejected as a second voice path to build and test.
+    evidence:
+      - "PR #16"
+      - "docs/design.md#3-owner-decisions-fixed (STT and TTS row: 'One TTS, no fallback voice')"
+      - "docs/design.md#12-alternatives-considered"
+      - "https://app.notion.com/p/41179cd5f9f481d7a726de206bac30df (article: fallback voice removed)"
+    source: USER_DECISION
+    supersedes: [DECISION-014]
+    superseded_by: null
+    originating_task: Design v4
+
+  - id: DECISION-016
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Web search deferral and opt-in
+    decision: >-
+      Web search is after v1, opt-in, off by default, with a visible indicator on every search, because
+      queries leave the machine. Design v8 kept it and all tool use after v1 (confirmed 2026-11-12). PR #133
+      later wired search into v1 without a recorded decision; that question is a candidate.
+    evidence:
+      - "https://app.notion.com/p/41179cd5f9f48114b7c4f14c0cbae676 (row asked by the maintainer)"
+      - "docs/design.md#2-goals-and-non-goals"
+      - "docs/design.md#93-network-policy"
+      - "issue #5"
+      - "PR #109"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v1 review
+
+  - id: DECISION-017
+    date: "2026-11-07"
+    status: SUPERSEDED
+    topic: Memory eval split
+    decision: memory-001 to memory-003 are dev and memory-004 and memory-005 are held-out.
+    evidence:
+      - "https://app.notion.com/p/41179cd5f9f4813091b0c48d23fa69d3"
+      - "issue #47"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-018
+    originating_task: Eval datasets
+
+  - id: DECISION-018
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Memory held-out size and repeated runs
+    decision: >-
+      Grow the memory held-out set to six conversations (about 27 facts, 48 questions) and run each held-out
+      gate three times, gating on the mean.
+    evidence:
+      - "issue #51 record: \"The maintainer chose two fixes: a larger heldout split, and three runs per gate.\""
+      - "https://app.notion.com/p/41179cd5f9f48179b527d79b7c4b6f32"
+      - "docs/design.md#10-evaluation"
+    source: USER_DECISION
+    supersedes: [DECISION-017]
+    superseded_by: null
+    originating_task: Eval datasets
+
+  - id: DECISION-019
+    date: "2026-11-07"
+    status: APPROVED
+    topic: Eval case authorship
+    decision: >-
+      Edgy persona prompts and G2/G3 guardrail cases were drafted by a local model, curated by Claude, and
+      approved by the maintainer; the eval is not written only by the model it tests. The maintainer records
+      the 30 latency WAV turns through a local recording page.
+    evidence:
+      - "PR #60"
+      - "PR #77"
+      - "issue #47"
+      - "https://app.notion.com/p/41179cd5f9f481d7a726de206bac30df"
+      - "https://app.notion.com/p/41179cd5f9f4816a8990cab0249be669"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Eval datasets
+
+  - id: DECISION-020
+    date: "2026-11-07"
+    status: APPROVED
+    topic: CI scope
+    decision: >-
+      The PR-title CI check was removed because the maintainer decided it is simple enough to check by hand;
+      the title rule itself is unchanged. The stub-eval CI step was removed because it implied CI measured model
+      quality. CI runs pytest, ruff, web checks and the stub latency run.
+    evidence:
+      - "PR #45 record: \"The maintainer decided the check is simple enough to do by hand during review.\""
+      - "PR #58"
+      - "issue #57"
+      - "https://app.notion.com/p/41179cd5f9f481d7a726de206bac30df"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: CI setup
+
+  - id: DECISION-021
+    date: "2026-11-07"
+    status: SUPERSEDED
+    topic: Decision record location
+    decision: >-
+      Open product questions lived in a Notion questions-and-decisions database, the discussion log stayed
+      outside the repo, and docs/design.md section 3 was the copy of record for agents.
+    evidence:
+      - "docs/design.md#3-owner-decisions-fixed: \"This table is the copy of record for agents; the discussion log is kept outside the repo.\""
+      - "issue #4"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-053
+    originating_task: Repo setup
+
+  - id: DECISION-022
+    date: "2026-11-08"
+    status: APPROVED
+    topic: STT model
+    decision: >-
+      STT is Parakeet TDT 0.6B v2 (mlx-community/parakeet-tdt-0.6b-v2, revision 8ae1553), chosen for latency
+      headroom (p90 50 ms against a 200 ms budget). The maintainer overrode the WER ranking because the gap to
+      Nemotron is one real error on 30 clips. Whisper large-v3-turbo misses the budget and was replaced (PR #74).
+    evidence:
+      - "docs/evals/voice-bakeoff.md"
+      - "docs/design.md#3-owner-decisions-fixed (STT and TTS row)"
+      - "issue #21"
+      - "PR #72"
+      - "PR #74"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Voice bake-off
+
+  - id: DECISION-023
+    date: "2026-11-08"
+    status: SUPERSEDED
+    topic: TTS Qwen3-TTS voice Ryan
+    decision: >-
+      After the maintainer scored 80 clips, Qwen3-TTS 1.7B CustomVoice 8bit with the male voice Ryan was chosen
+      for the best listening score and lowest p90 first chunk. Orpheus was discarded (p90 first chunk 5514 ms,
+      streaming repeats audio). The female voice or rename question went to issue #68.
+    evidence:
+      - "docs/evals/voice-bakeoff.md"
+      - "issue #21"
+      - "issue #64"
+      - "PR #72"
+      - "issue #68"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-042
+    originating_task: Voice bake-off
+
+  - id: DECISION-024
+    date: "2026-11-08"
+    status: APPROVED
+    topic: Voice bake-off rendering pass skipped
+    decision: >-
+      The maintainer chose not to do the per-clip tag and instruction rendering pass; tags are stripped or
+      rewritten per model through tag_format. The results are moot now that moods are gone.
+    evidence:
+      - "docs/evals/voice-bakeoff.md: \"Rendering was not rated because the maintainer chose not to do the per-clip rendering pass.\""
+      - "issue #64"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Voice bake-off
+
+  - id: DECISION-025
+    date: "2026-11-08"
+    status: APPROVED
+    topic: Eval judge
+    decision: >-
+      Claude Code itself judges held-out evals, not a subagent and not a local judge model. Any 14B judge was
+      rejected after Phi-4 misjudged G3 refusals. Phase 1 records replies and judge requests, Claude Code writes
+      verdict files that are committed, and the score step replays them; CI uses a stub model and stub judge.
+      Restated on 2026-11-13.
+    evidence:
+      - "Lead agent session notes, 2026-11-08 and 2026-11-13"
+      - "issue #83 record: \"the maintainer decided Claude Code judges instead of a local judge model\" (dated 2026-11-09)"
+      - "docs/design.md#10-evaluation"
+      - "PR #82"
+      - "PR #84"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: LLM bake-off
+
+  - id: DECISION-026
+    date: "2026-11-09"
+    status: SUPERSEDED
+    topic: Mood-to-TTS instruction table
+    decision: The maintainer confirmed the six-mood instruction table for Qwen TTS.
+    evidence:
+      - "PR #79"
+      - "PR #72"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-036
+    originating_task: Voice bake-off
+
+  - id: DECISION-027
+    date: "2026-11-09"
+    status: APPROVED
+    topic: Eval gates frozen
+    decision: >-
+      The maintainer approved the section 10 thresholds as written: persona 85 percent held-out pass with zero
+      edgy refusals, crisis 10 of 10 with at most 2 false positives of 20, memory 0.90 precision, 0.75 recall
+      and 80 percent answers, all guardrail cases pass. All eval sets are frozen and changing one needs its own
+      issue. The mood gate was later dropped and the persona rubric reworded (PR #115).
+    evidence:
+      - "PR #78 record: \"The maintainer approved the section 10 thresholds as written, merged the G2 and G3 cases (#77), and reviewed the crisis set.\""
+      - "docs/design.md#10-evaluation"
+      - "PR #115"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Eval datasets
+
+  - id: DECISION-028
+    date: "2026-11-09"
+    status: APPROVED
+    topic: LLM pick
+    decision: >-
+      No candidate passed the gates, so under "prefer the smallest that passes, else the best scorer" the
+      maintainer picked bolt-e4b (lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit, revision 4274caa)
+      over gemma4-e4b. No baseline margin applies. guardrail-g4-005 stays unchanged. The NVIDIA Open Model
+      License needs sign-off at slice L2. Whether this is still the current LLM is a candidate question.
+    evidence:
+      - "Lead agent session notes, 2026-11-09 (margin 'none applicable')"
+      - "PR #87"
+      - "docs/evals/llm-bakeoff.md#maintainer-selection"
+      - "docs/design.md#3-owner-decisions-fixed (LLM size row)"
+      - "https://app.notion.com/p/41379cd5f9f4814fa769ece4169621eb"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: LLM bake-off
+
+  - id: DECISION-029
+    date: "2026-11-09"
+    status: APPROVED
+    topic: Chunked history trimming
+    decision: >-
+      History is trimmed in chunks (to about 2000 tokens when it passes 3000) so the cache prefix stays stable
+      between trims, because post-cap prefill averaged 4111 ms against a 150 ms budget. Design 5.2 is not yet
+      updated (issue #86).
+    evidence:
+      - "Lead agent session notes, 2026-11-09"
+      - "issue #86 record: \"The maintainer approved this design change on 2026-11-09.\""
+      - "https://app.notion.com/p/41179cd5f9f48196aa55c89db2878495"
+      - "docs/design.md#52-latency"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: LLM bake-off
+
+  - id: DECISION-030
+    date: "2026-11-09"
+    status: SUPERSEDED
+    topic: Memory moved to v1.1
+    decision: >-
+      Ship v1 without memory because extraction with bolt-e4b was weak (0.28 precision, 0.10 recall). v1 keeps
+      session history in server memory only; the S5a storage code stays unused; #30 to #32 move to v1.1.
+    evidence:
+      - "PR #88 record: \"The maintainer decided on 2026-11-09 to ship v1 without memory and to build it in v1.1.\""
+      - "https://app.notion.com/p/41379cd5f9f481d3bb33e22907ee992c (row asked by the maintainer)"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-031
+    originating_task: Design v6
+
+  - id: DECISION-031
+    date: "2026-11-10"
+    status: APPROVED
+    topic: Memory across sessions in v1
+    decision: >-
+      Memory across sessions is required before the public v1 launch, reversing design v6. Issues #30, #31,
+      #32 and #107 keep their scope. How memory is implemented is a separate candidate question.
+    evidence:
+      - "Maintainer: \"if it cannot remember across sessions, it's stupid\""
+      - "PR #106"
+      - "https://app.notion.com/p/41579cd5f9f481299836ca0d3f8360e4"
+      - "docs/roadmap.md"
+    source: USER_DECISION
+    supersedes: [DECISION-030]
+    superseded_by: null
+    originating_task: Design v7
+
+  - id: DECISION-032
+    date: "2026-11-10"
+    status: SUPERSEDED
+    topic: Who builds small fixes
+    decision: Claude Code builds small fixes directly with an issue, a PR and an EGM review.
+    evidence:
+      - "Maintainer: \"yes build it yourself\""
+      - "Lead agent session notes, 2026-11-10"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-044
+    originating_task: Build process
+
+  - id: DECISION-033
+    date: "2026-11-10"
+    status: APPROVED
+    topic: Langfuse and Docker while models run
+    decision: Keep Langfuse and Docker Desktop off while the real models run on the 24 GB Mac.
+    evidence:
+      - "Lead agent session notes, 2026-11-10"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Local runs
+
+  - id: DECISION-034
+    date: "2026-11-10"
+    status: SUPERSEDED
+    topic: Langfuse tracing
+    decision: Opt-in Langfuse tracing over OTLP was added for local development (merged 2026-11-11 UTC).
+    evidence:
+      - "issue #104"
+      - "PR #105"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-046
+    originating_task: Observability
+
+  - id: DECISION-035
+    date: "2026-11-10"
+    status: SUPERSEDED
+    topic: Persona system prompt v2
+    decision: >-
+      The prompt was rewritten for more human replies. The maintainer approved the text and merged without
+      judged held-out refusal and G2 to G4 results, accepting that gap until #29.
+    evidence:
+      - "PR #100 record: \"The maintainer decided on 2026-11-10 to merge without them and accept that gap until #29.\""
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-041
+    originating_task: Persona
+
+  - id: DECISION-036
+    date: "2026-11-11"
+    status: APPROVED
+    topic: No moods, no laughing
+    decision: >-
+      Ames is a thought partner with one calm voice: no moods, no laughing, no emotional rendering, and
+      sentiment and mood detection are dropped. The control token carries only the crisis flag; a reply that
+      still carries mood= is malformed. Study buddy and the friend or sassy persona are dropped.
+    evidence:
+      - "Lead agent session notes, 2026-11-11"
+      - "PR #108"
+      - "PR #109"
+      - "PR #111"
+      - "PR #115"
+      - "docs/design.md#3-owner-decisions-fixed (Product row: described by the maintainer on 2026-11-10, confirmed 2026-11-12)"
+      - "docs/design.md#7-the-control-token"
+    source: USER_DECISION
+    supersedes: [DECISION-001, DECISION-026]
+    superseded_by: null
+    originating_task: Design v8
+
+  - id: DECISION-037
+    date: "2026-11-11"
+    status: APPROVED
+    topic: iPhone wanted, after v1
+    decision: >-
+      The maintainer wants Ames on iPhone. The phone client is after v1; whether it is a thin client over LAN
+      or an on-device smaller model set is not decided.
+    evidence:
+      - "issue #102 record: \"The maintainer wants Ames on iPhone.\""
+      - "PR #108"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v8
+
+  - id: DECISION-038
+    date: "2026-11-12"
+    status: APPROVED
+    topic: Product purpose
+    decision: >-
+      The main purpose is a general-purpose local voice agent on iPhone or Mac with web search and memory, with
+      some emotion but not much. Model sizes are to be revisited because the current set does not fit an iPhone.
+    evidence:
+      - "Lead agent session notes, 2026-11-12"
+      - "https://app.notion.com/p/41179cd5f9f48173b1a6eb181b310fe4 (hub table: models run on the user's own machine)"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Product direction
+
+  - id: DECISION-039
+    date: "2026-11-12"
+    status: APPROVED
+    topic: Context summarising
+    decision: >-
+      When history nears the 3000-token cap the LLM summarises the oldest turns while idle and the summary is
+      swapped in at the trim; user speech cancels it, the fallback is plain drop-off, the summary stays in
+      server memory and never feeds extraction, and the conversation continues on the same connection and
+      session_id. In v1 scope, not built.
+    evidence:
+      - "docs/design.md#55-context-management: \"Summarising continues on the same connection and `session_id` (confirmed 2026-11-12).\""
+      - "PR #108"
+      - "PR #109"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Design v8
+
+  - id: DECISION-040
+    date: "2026-11-12"
+    status: SUPERSEDED
+    topic: Skip Codex for now
+    decision: Skip Codex for now and build only with Claude Code.
+    evidence:
+      - "Lead agent session notes, 2026-11-12"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: DECISION-044
+    originating_task: Build process
+
+  - id: DECISION-041
+    date: "2026-11-12"
+    status: APPROVED
+    topic: Persona v8.1 details
+    decision: >-
+      She swears when the user does. Each turn she chooses a question or a suggestion, at most one, or neither;
+      it is a judgment, not a quota. She does not flatter. Replies are at most three sentences unless depth is
+      requested.
+    evidence:
+      - "docs/design.md#82-advice-rules: \"Swearing when the user does is kept (maintainer, 2026-11-12).\""
+      - "PR #109"
+      - "PR #111"
+    source: USER_DECISION
+    supersedes: [DECISION-035]
+    superseded_by: null
+    originating_task: Design v8
+
+  - id: DECISION-042
+    date: "2026-11-13"
+    status: APPROVED
+    topic: TTS Pocket TTS
+    decision: >-
+      TTS is Pocket TTS 100M (mlx-community/pocket-tts, revision cbf71d5) with a female default voice (azelma,
+      VCTK CC BY 4.0) and a male voice (marius, CC0) toggled in the web UI, a clear voice, no emotion controls
+      and no voice cloning. Qwen3-TTS was rejected as slow and tiring in conversation. Cosette and other
+      Expresso or EARS voices are rejected for their CC BY-NC licence.
+    evidence:
+      - "Maintainer: \"slow and annoying in a conversation\""
+      - "PR #113"
+      - "issue #112"
+      - "issue #68"
+      - "docs/design.md#3-owner-decisions-fixed (STT and TTS row)"
+      - "docs/models.md"
+    source: USER_DECISION
+    supersedes: [DECISION-023]
+    superseded_by: null
+    originating_task: Voice bake-off
+
+  - id: DECISION-043
+    date: "2026-11-13"
+    status: APPROVED
+    topic: LLM bake-off rerun on v8.1
+    decision: >-
+      Rewrite the persona judge for the v8.1 thought partner (keys, 1 to 5 scale, pass rule and 0.85 gate
+      unchanged) and drop the moods field, then rerun all ten candidates on the v8.1 prompt. The qwen35-9b
+      baseline is dropped and granite42-3b is added. The rerun (2026-11-15) passed no candidate and recorded
+      no pick.
+    evidence:
+      - "Lead agent session notes, 2026-11-13"
+      - "PR #116 record: \"The maintainer asked on 2026-11-13 to leave the 9B baseline out of the v8.1 re-run and replace it with another small model.\""
+      - "issue #114 record: \"The maintainer chose on 2026-11-13 to fix the rubric first, then re-run all ten candidates.\""
+      - "PR #115"
+      - "PR #117"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: LLM bake-off
+
+  - id: DECISION-044
+    date: "2026-11-15"
+    status: APPROVED
+    topic: Builder
+    decision: Codex is dropped entirely; Claude Code builds everything.
+    evidence:
+      - "Maintainer: \"codex harness is wasting my time, I want to build this only using Claude Code\""
+      - "Lead agent session notes, 2026-11-15"
+      - "PR #138 (repo record of retiring the Codex loop, 2026-11-18)"
+    source: USER_DECISION
+    supersedes: [DECISION-008, DECISION-032, DECISION-040]
+    superseded_by: null
+    originating_task: Build process
+
+  - id: DECISION-045
+    date: "2026-11-15"
+    status: APPROVED
+    topic: Use cases
+    decision: >-
+      Feelings and companion use cases are dropped. The remaining use cases are discussing ideas with web
+      lookup and general research.
+    evidence:
+      - "Maintainer: \"forget about feelings and companion\""
+      - "Lead agent session notes, 2026-11-15"
+      - "PR #108 and PR #109 (repo record drops the emotional companion role, confirmed 2026-11-12)"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Product direction
+
+  - id: DECISION-046
+    date: "2026-11-15"
+    status: APPROVED
+    topic: Langfuse removed
+    decision: Langfuse tracing is removed because the maintainer no longer uses it. The local turn log remains.
+    evidence:
+      - "PR #131 record: \"The maintainer no longer uses Langfuse and requested its removal.\""
+      - "issue #104"
+    source: USER_DECISION
+    supersedes: [DECISION-034]
+    superseded_by: null
+    originating_task: Observability
+
+  - id: DECISION-047
+    date: "2026-11-15"
+    status: APPROVED
+    topic: Opt-in turn log with ratings
+    decision: >-
+      AMES_TURN_LOG=1 writes one JSONL file per session (directory 0700, file 0600) with user words, spoken
+      reply, latency and a Good or Bad rating. It is off by default. Rated sessions are later fine-tuning and
+      preference data.
+    evidence:
+      - "issue #118 record: \"The maintainer wants to talk to the voice loop for several hours before release and use those sessions as fine-tuning and preference data.\""
+      - "PR #119"
+      - "issue #121"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Turn log
+
+  - id: DECISION-048
+    date: "2026-11-17"
+    status: APPROVED
+    topic: Typed input
+    decision: >-
+      A text box works whenever a session is connected, muted or not, and is not tied to the mute button.
+      Sending while Ames speaks cuts her off and answers the text. Text is untrusted: non-empty after strip
+      and at most 2000 characters.
+    evidence:
+      - "issue #134 (\"Decisions (maintainer, 2026-11-17)\")"
+      - "PR #137"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Typed input
+
+  - id: DECISION-049
+    date: "2026-11-18"
+    status: APPROVED
+    topic: Agent workflow and repo conventions
+    decision: >-
+      The fixed orchestration loop is retired. The maintainer chooses the coding agent and any optional build or
+      review harness per task, owns design decisions, and merges PRs. AGENTS.md holds the conventions agents
+      follow, including the code smells list and the rule that tests need no GPU, microphone, network or
+      downloaded models.
+    evidence:
+      - "PR #138 record: \"The maintainer retired the fixed orchestration loop and asked for review guidance that works with their choice of tools.\""
+      - "AGENTS.md"
+      - "docs/design.md#133-slices"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Build process
+
+  - id: DECISION-050
+    date: "2026-11-22"
+    status: APPROVED
+    topic: Release target
+    decision: The maintainer aims to release a mobile version.
+    evidence:
+      - "Maintainer: \"my aim is to release a mobile version of this\""
+      - "Lead agent session notes, 2026-11-22"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Product direction
+
+  - id: DECISION-051
+    date: "2026-11-22"
+    status: APPROVED
+    topic: Distillation method
+    decision: >-
+      Off-policy distillation is not working. Move to on-policy training: the student generates and a teacher
+      grades whole replies (reply-level, not token-level), so the teacher need not share the student's
+      tokenizer. This replaces the training method in DECISION-011; its ship rule stands.
+    evidence:
+      - "Maintainer: \"what if the teacher only cheks the smaller model's replies instead of chekcing at the token level\""
+      - "Lead agent session notes, 2026-11-22"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Distillation
+
+  - id: DECISION-052
+    date: "2026-11-22"
+    status: APPROVED
+    topic: Training-time judge
+    decision: >-
+      GLM 5.3 through the OpenCode Go subscription (model id opencode-go/glm-5.3) is the training-time judge.
+      This does not change who judges held-out evals (DECISION-025).
+    evidence:
+      - "Maintainer: \"I am plannign to use glm 5.3 using opencode go subscription\""
+      - "Lead agent session notes, 2026-11-22"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Distillation
+
+  - id: DECISION-053
+    date: "2026-11-22"
+    status: APPROVED
+    topic: Decision ledger
+    decision: >-
+      Adopt .agent/learning/decisions.yml, .agent/learning/candidates.yml and .agent/rules.yml, backfilled from
+      Notion, GitHub and session notes. Only decisions traceable to the maintainer go in decisions.yml; the rest
+      become NEEDS_DECISION candidates. Reversed decisions stay as SUPERSEDED with links both ways. The name of
+      the system the ledger format came from must not appear in the repo.
+    evidence:
+      - "Lead agent session notes, 2026-11-22"
+      - ".agent/README.md"
+    source: USER_DECISION
+    supersedes: [DECISION-021]
+    superseded_by: null
+    originating_task: Decision ledger setup

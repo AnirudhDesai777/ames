@@ -6,6 +6,8 @@ These conventions apply to anyone working in this repo.
 
 The maintainer chooses the coding agent and any optional build or review harness per task. Work directly from the maintainer's request or the assigned issue in a fresh worktree. The maintainer owns design decisions and merges PRs. Regressions, safety problems, and crashes remain grounds to block a merge.
 
+Before deciding anything a recorded decision may already cover, read `.agent/README.md`.
+
 ## Repo map
 
 Read this before searching. Paths marked (planned) do not exist yet; the first issue that needs one creates it at that path.
@@ -13,6 +15,7 @@ Read this before searching. Paths marked (planned) do not exist yet; the first i
 | Path | What lives there | Read it when |
 |---|---|---|
 | `AGENTS.md` | These rules | Always, first |
+| `.agent/` | Decision ledger: maintainer decisions, open candidates, derived rules | Before work on a topic the maintainer may have decided |
 | `docs/design.md` | v1 design: pipeline, budgets, memory schema, persona, guardrails | Before any feature work |
 | `docs/roadmap.md` | Work after v1: NVIDIA, web search, fine-tuning, duplex, cloning | Never build from it without an issue |
 | `docs/reviews/` | EGM review reports on the design and on PRs | Before changing a design decision |
