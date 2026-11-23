@@ -43,10 +43,10 @@ HTTP and WebRTC integration tests use only local sockets. They do not connect to
    AMES_STUB=1 uv run --locked python -m server.app
    ```
 
-For real models, install the `mac` extra and set `AMES_LLM_MODEL` to a local mlx-lm model directory. You can export the variable in the shell or put it before the command. There is no default. The recommended model is the Qwen3.5 2B Ames fine-tune v1.2, MLX affine 4-bit (group size 64):
+For real models, install the `mac` extra and set `AMES_LLM_MODEL` to a local mlx-lm model directory. You can export the variable in the shell or put it before the command. There is no default. The recommended model is NVIDIA Nemotron 3.5 Bolt E4B, MLX 4-bit (see the root README for the download command):
 
 ```sh
-AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/qwen3.5-2b-ames-v1.2-mlx-4bit" \
+AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/nemotron-3.5-bolt-e4b-mlx-4bit" \
   uv run --locked --extra mac python -m server.app
 ```
 
@@ -309,10 +309,10 @@ Do these steps on the reference Mac (M4 Pro, 24 GB RAM):
    - The complete Parakeet TDT 0.6B v2 MLX model directory goes to `~/Library/Application Support/Ames/models/parakeet-tdt-0.6b-v2/`.
    - The full `mlx-community/pocket-tts` snapshot goes to `~/Library/Application Support/Ames/models/pocket-tts/`. It must include `embeddings/azelma.safetensors` and `embeddings/marius.safetensors`.
    - A complete mlx-lm model directory goes under the same `models/` directory.
-4. Make sure the Mac is idle. Then run the harness with the local LLM directory. The recommended model is the Qwen3.5 2B Ames fine-tune v1.2, MLX affine 4-bit (group size 64). You can use a different local mlx-lm model directory.
+4. Make sure the Mac is idle. Then run the harness with the local LLM directory. The recommended model is NVIDIA Nemotron 3.5 Bolt E4B, MLX 4-bit (see the root README for the download command). You can use a different local mlx-lm model directory.
 
    ```sh
-   AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/qwen3.5-2b-ames-v1.2-mlx-4bit" \
+   AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/nemotron-3.5-bolt-e4b-mlx-4bit" \
      uv run --locked --extra mac python -m server.latency
    ```
 
