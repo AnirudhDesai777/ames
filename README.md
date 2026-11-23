@@ -22,12 +22,14 @@ These parts are planned for v1 and are not built yet:
 
 Conversation history stays in server memory for the current session only.
 
+If the model marks a reply as a crisis, Ames does not speak that reply. It speaks a fixed line that tells you to call your local emergency number or to contact someone you trust. Then it ends the session and closes the connection. Ames is not a crisis service.
+
 ## Privacy
 
 - The server listens only on `127.0.0.1`. No other computer can connect to it.
 - Audio and transcripts do not leave your Mac.
 - The server does not download models. You put them on disk yourself (see [server/README.md](server/README.md)).
-- Web search is the only feature that sends data out. It is off by default. When you turn it on, each search query goes to a SearXNG server (default `http://localhost:8080`). SearXNG sends the query to public search engines. If `BRAVE_API_KEY` is set and SearXNG fails, the query goes to the Brave Search API.
+- Web search is the only feature that sends data out. It is off by default. When you turn it on, each search query goes to a SearXNG server (default `http://localhost:8080`, setup in [docs/searxng.md](docs/searxng.md)). SearXNG sends the query to public search engines. If `BRAVE_API_KEY` is set and SearXNG fails, the query goes to the Brave Search API.
 
 ## How it works
 
@@ -127,16 +129,34 @@ Stub mode uses a fixed transcript, a fixed reply, and a tone in place of speech.
 
 ## Run with real models
 
-1. Install the local models. The steps are in [server/README.md](server/README.md#recorded-cascade-and-latency).
-2. Set `AMES_LLM_MODEL` to an mlx-lm model directory. The server does not start without it. There is no default.
-3. Run:
+1. Build the web client (see [Build and test](#build-and-test)).
+2. Install the Mac dependencies:
 
    ```sh
-   AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/qwen3.5-2b-ames-v1.2-mlx-4bit" \
-     uv run --locked --extra mac python -m server.app
+   uv sync --locked --extra mac
    ```
 
-The recommended model is the Qwen3.5 2B Ames fine-tune v1.2, MLX 4-bit. You can use a different local mlx-lm model directory.
+3. Put the models on disk. The server never downloads weights. The revisions and hashes are in [docs/models.md](docs/models.md). All paths are under `~/Library/Application Support/Ames/models/`:
+   - `parakeet-tdt-0.6b-v2/`: the complete `mlx-community/parakeet-tdt-0.6b-v2` MLX model directory.
+   - `pocket-tts/`: the full `mlx-community/pocket-tts` snapshot. It must include `embeddings/azelma.safetensors` and `embeddings/marius.safetensors`.
+   - A complete mlx-lm model directory for the language model.
+
+   The recommended language model is NVIDIA Nemotron 3.5 Bolt E4B, MLX 4-bit. It scored best in the [LLM bake-off](docs/evals/llm-bakeoff.md). To download it:
+
+   ```sh
+   uv run --locked --extra mac hf download lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit \
+     --revision 4274caa99dbacb12cbbca9bd9595a5063a33880f \
+     --local-dir "$HOME/Library/Application Support/Ames/models/nemotron-3.5-bolt-e4b-mlx-4bit"
+   ```
+
+   A fine-tuned Ames model is in progress and is not published yet. You can use a different local mlx-lm model directory.
+
+4. Set `AMES_LLM_MODEL` to the language model directory. The server does not start without it. There is no default. Then run:
+
+   ```sh
+   AMES_STUB=0 AMES_LLM_MODEL="$HOME/Library/Application Support/Ames/models/nemotron-3.5-bolt-e4b-mlx-4bit" \
+     uv run --locked --extra mac python -m server.app
+   ```
 
 ## Repository layout
 
@@ -147,9 +167,24 @@ The recommended model is the Qwen3.5 2B Ames fine-tune v1.2, MLX 4-bit. You can 
 | [persona/](persona/ames.md) | Character sheet and system prompt |
 | [evals/](evals/README.md) | Frozen eval sets and the eval runner |
 | [docs/design.md](docs/design.md) | v1 design |
+| [docs/models.md](docs/models.md) | Pinned model revisions, hashes and licenses |
+| [docs/searxng.md](docs/searxng.md) | Local SearXNG setup for web search |
+| [docs/tool-calling.md](docs/tool-calling.md) | Tool protocol |
 | [docs/architecture/](docs/architecture/README.md) | C4 architecture diagrams |
 | [docs/roadmap.md](docs/roadmap.md) | Work after v1 |
 | [AGENTS.md](AGENTS.md) | Rules for contributors and coding agents |
+
+## Credits
+
+Ames runs these models. Each keeps its own license.
+
+- Speech to text: [Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) by NVIDIA, MLX conversion by `mlx-community`. [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+- Text to speech: [Pocket TTS](https://huggingface.co/kyutai/pocket-tts) by Kyutai, MLX conversion by `mlx-community`. [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+- Female voice (`azelma`): built from VCTK speaker p303, Voice Cloning Toolkit, Centre for Speech Technology Research, University of Edinburgh. [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/). Source: [kyutai/tts-voices](https://huggingface.co/kyutai/tts-voices).
+- Male voice (`marius`): a Kyutai Unmute voice donation. [CC0](https://creativecommons.org/publicdomain/zero/1.0/). Source: [kyutai/tts-voices](https://huggingface.co/kyutai/tts-voices).
+- Language model (recommended): [NVIDIA Nemotron 3.5 Bolt E4B](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16) by NVIDIA, MLX conversion by LM Studio. [OpenMDW 1.1](https://openmdw.ai/license/1-1/).
+- Voice activity detection: Silero VAD, bundled in Pipecat. MIT.
+- Turn detection: Smart Turn v3.2 by Pipecat. BSD-2-Clause.
 
 ## License
 
