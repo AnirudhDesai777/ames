@@ -2,9 +2,11 @@ import asyncio
 import sys
 import wave
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
+import pytest
 from pipecat.frames.frames import (
+    BotStoppedSpeakingFrame,
     InputAudioRawFrame,
     InterruptionFrame,
     LLMFullResponseEndFrame,
@@ -18,6 +20,7 @@ from pipecat.tests.utils import SleepFrame, run_test
 from server.cascade import StubTranscription, ToneTTS
 from server.latency import DiscardAudioOutput
 from server.live import (
+    CRISIS_LINE,
     Conversation,
     SessionOutput,
     SessionPrompt,
@@ -157,6 +160,44 @@ async def test_crisis_reply_never_reaches_tts_or_history(monkeypatch):
         "or reach someone you trust right now."
     )
     assert conversation.history[0] == {"role": "user", "content": "hi there"}
+
+
+@pytest.mark.parametrize(
+    "chunks", [["<state crisis=1>"], ["<state crisis=1>", "<tool_call>"], ["<sta", "te crisis=1>"]]
+)
+async def test_bare_crisis_token_speaks_crisis_line_then_ends_session(monkeypatch, chunks):
+    """The student's crisis turn is exactly <state crisis=1>; it must take the exit path."""
+    monkeypatch.setenv("AMES_STUB", "1")
+
+    class CrisisModel(StubLanguageModel):
+        async def tokens(self, messages):
+            for chunk in chunks:
+                yield chunk
+
+    events = Mock()
+    events.connection.disconnect = AsyncMock()
+    conversation = Conversation(events)
+    received, upstream = await run_test(
+        Pipeline(
+            live_stages(
+                StubTranscription(), CrisisModel(), ToneTTS(), conversation, DiscardAudioOutput()
+            )
+        ),
+        frames_to_send=[
+            TranscriptionFrame("i want to end it all", "", "now"),
+            SleepFrame(0.3),
+            BotStoppedSpeakingFrame(),
+            SleepFrame(0.05),
+        ],
+    )
+    spoken = [frame.text for frame in received if isinstance(frame, TTSTextFrame)]
+    assert " ".join(spoken) == CRISIS_LINE
+    assert conversation.history == [
+        {"role": "user", "content": "i want to end it all"},
+        {"role": "ames", "content": CRISIS_LINE},
+    ]
+    events.notice.assert_called_once_with("session_ended", CRISIS_LINE)
+    events.connection.disconnect.assert_awaited_once()
 
 
 async def test_interruption_finalizes_only_completed_sentence_once():

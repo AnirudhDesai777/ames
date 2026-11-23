@@ -11,6 +11,7 @@ from evals import llm_bakeoff as bake
 from evals.stubs import stub_judge
 from server.llm import MAX_REPLY_TOKENS
 from server.prompt import HISTORY_TOKENS, load_system_prompt
+from server.tool_calls import TOOL_INSTRUCTIONS
 
 
 @pytest.mark.parametrize("candidate", bake.CANDIDATES)
@@ -26,7 +27,10 @@ def test_stub_bakeoff_has_pending_metrics_and_capped_probe(candidate, monkeypatc
     assert result["status"] == "PENDING_VERDICTS"
     assert result["backend"] == "stub"
     assert result["revision"] == bake.CANDIDATES[candidate][1]
-    assert result["system_prompt_sha256"] == bake.sha256(load_system_prompt())
+    prompt = load_system_prompt()
+    if candidate == "ames-v1":
+        prompt += "\n\n" + TOOL_INSTRUCTIONS
+    assert result["system_prompt_sha256"] == bake.sha256(prompt)
     assert len(result["judge_prompt_source_sha256"]) == 64
     assert len(result["judge_prompts_sha256"]) == 5
     assert result["sampling"]["temperature"] > 0
@@ -406,3 +410,23 @@ def test_extraction_failure_records_cases_without_aborting_candidate():
             case["extraction_errors"][0]["reply"] == "invalid extraction" for case in run["cases"]
         )
     assert result["performance"]["turns"]
+
+
+def test_local_student_loads_directory_with_tool_prompt(monkeypatch, tmp_path):
+    import hashlib
+
+    calls, _, _ = fake_runtime(monkeypatch)
+    folder, pinned_hash, loader = bake.CANDIDATES["ames-v1"]
+    assert folder == "qwen3.5-2b-ames-v1-mlx-4bit"
+    model_dir = tmp_path / folder
+    model_dir.mkdir()
+    (model_dir / "model.safetensors").write_bytes(b"weights")
+    monkeypatch.setattr(bake, "MODEL_DIR", tmp_path)
+    monkeypatch.setenv("AMES_LLM_MODEL", str(tmp_path / "different-runtime-model"))
+    with pytest.raises(ValueError, match="pinned revision"):
+        bake.LocalModel((folder, pinned_hash, loader), bake.SAMPLING)
+    test_hash = hashlib.sha256(b"weights").hexdigest()
+    model = bake.LocalModel((folder, test_hash, loader), bake.SAMPLING)
+    assert ("lm", str(model_dir)) in calls
+    assert model.resolved_revision == test_hash
+    assert model.assembler.system_prompt.endswith(TOOL_INSTRUCTIONS)
