@@ -1,12 +1,13 @@
 # Architecture
 
-These C4 diagrams show Ames v1. They are Mermaid flowcharts, which GitHub renders. They follow `docs/design.md` (version 8.1). They were checked against the code in `server/` and `web/`.
+These C4 diagrams show Ames v1. They are Mermaid diagrams, which GitHub renders. They follow `docs/design.md` (version 8.1). They were checked against the code in `server/` and `web/`.
 
 | Level | Diagram | What it shows |
 |---|---|---|
 | 1 | [Context](c4-context.md) | The user, Ames, and the external systems: search services (opt-in) and Hugging Face (planned) |
 | 2 | [Containers](c4-containers.md) | The web client, the single server process, the in-process models, the tools, and the local files |
 | 3 | [Voice pipeline](c4-components-voice-pipeline.md) | The live audio path from the microphone to the speaker, with the tool loop and session events |
+| Dynamic | [Spoken turn](c4-dynamic-spoken-turn.md) | The order of calls for one spoken turn |
 
 ## Memory
 
@@ -29,4 +30,12 @@ for n in c4-context c4-containers c4-components-voice-pipeline; do
   sed -n '/^```mermaid/,/^```$/p' docs/architecture/$n.md | sed '1d;$d' > "${TMPDIR:-/tmp}/$n.mmd"
   mmdc -i "${TMPDIR:-/tmp}/$n.mmd" -o docs/architecture/$n.png -b white -s 3
 done
+```
+
+## Regenerate the README SVGs
+
+The root README shows the context, container and spoken-turn diagrams as SVG files in `svg/`, one light and one dark file each. `draw.py` draws them by hand from the Mermaid sources, with no dependencies. After you change one of those Mermaid sources, make the same change in `draw.py`, then run it from the repository root:
+
+```sh
+python3 docs/architecture/draw.py
 ```

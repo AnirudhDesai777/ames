@@ -35,53 +35,24 @@ If the model marks a reply as a crisis, Ames does not speak that reply. It speak
 
 The browser sends microphone audio to the server. The server turns speech into text, writes a reply with the language model, and turns the reply into speech. The browser plays the speech.
 
-```mermaid
-flowchart LR
-    subgraph mac["Your Mac"]
-        subgraph chrome["Chrome"]
-            page["Ames page<br/>mic, speaker, transcript,<br/>text box, settings"]
-        end
-        subgraph server["Ames server, 127.0.0.1:8765"]
-            stt["Speech to text<br/>Parakeet TDT 0.6B v2"]
-            llm["Language model<br/>mlx-lm, AMES_LLM_MODEL"]
-            tts["Text to speech<br/>Pocket TTS 100M"]
-            tools["Tools<br/>remember, recall_memory,<br/>get_time, web_search"]
-        end
-        db[("ames.db<br/>saved facts")]
-        searx["SearXNG<br/>optional"]
-    end
-    web(["Public search engines<br/>only with web search on"])
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/svg/context-dark.svg">
+  <img alt="C4 context: the user talks to Ames on their own Mac. Only opt-in web search queries leave the Mac." src="docs/architecture/svg/context-light.svg">
+</picture>
 
-    page -- "mic audio, WebRTC" --> stt
-    stt -- "text" --> llm
-    llm -- "reply text" --> tts
-    tts -- "speech, WebRTC" --> page
-    llm <--> tools
-    tools <--> db
-    tools -. "query" .-> searx
-    searx -. "query" .-> web
-```
+Inside the Mac, Chrome talks to one Python server. The models run inside the server process. Saved facts go to `ames.db`. The [architecture docs](docs/architecture/README.md) have the full C4 diagrams.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/svg/containers-dark.svg">
+  <img alt="C4 containers: Chrome, the Ames server with its voice pipeline, HTTP app, in-process models, session history and tools, the ames.db memory store, and opt-in search services." src="docs/architecture/svg/containers-light.svg">
+</picture>
 
 One spoken turn goes through these steps:
 
-```mermaid
-sequenceDiagram
-    actor You
-    participant Page as Chrome page
-    participant STT as Speech to text
-    participant LLM as Language model
-    participant TTS as Text to speech
-
-    You->>Page: Speak
-    Page->>STT: Mic audio over WebRTC
-    STT->>LLM: Transcript and session history
-    loop Each complete sentence
-        LLM->>TTS: Sentence
-        TTS->>Page: Audio over WebRTC
-        Page->>You: Play audio
-    end
-    Note over You,TTS: If you speak for 300 ms or more, Ames stops and listens.
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/svg/turn-dark.svg">
+  <img alt="One spoken turn: mic audio goes to speech to text, the transcript goes to the language model, and each complete sentence goes to text to speech and plays. Speaking for 300 ms or more stops Ames." src="docs/architecture/svg/turn-light.svg">
+</picture>
 
 Ames starts to speak after the first complete sentence. The model continues to write the next sentences at the same time.
 
