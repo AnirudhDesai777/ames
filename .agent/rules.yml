@@ -245,8 +245,10 @@ rules:
     title: Distillation is on-policy and reply-level
     strength: SHOULD
     rule: >-
-      The student generates replies and a teacher grades whole replies. GLM 5.3 (opencode-go/glm-5.3) judges
-      training samples. A fine-tune ships only if it beats the base model's held-out scores.
+      The student (Qwen3.5-2B) generates replies and a teacher grades whole replies. GLM 5.3
+      (opencode-go/glm-5.3) judges training samples, after its agreement with Claude is measured on dev
+      prompts. Train best-of-n first, then DPO, and GRPO only if both stall, with TRL on a rented NVIDIA GPU.
+      A fine-tune ships only if it beats the base model's held-out scores.
     rationale: Off-policy distillation did not work; reply-level grading frees the teacher from the student's tokenizer.
     source:
       type: USER_DECISION
@@ -254,6 +256,10 @@ rules:
         - ".agent/learning/decisions.yml#DECISION-051"
         - ".agent/learning/decisions.yml#DECISION-052"
         - ".agent/learning/decisions.yml#DECISION-011"
+        - ".agent/learning/decisions.yml#DECISION-054"
+        - ".agent/learning/decisions.yml#DECISION-055"
+        - ".agent/learning/decisions.yml#DECISION-056"
+        - ".agent/learning/decisions.yml#DECISION-057"
     enforcement:
       status: review-only
       mechanism: PR review of training code.

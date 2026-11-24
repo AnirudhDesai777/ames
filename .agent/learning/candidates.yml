@@ -124,7 +124,7 @@ candidates:
     explicit_user_feedback: false
 
   - id: CANDIDATE-008
-    status: NEEDS_DECISION
+    status: ADOPT
     proposal: The base for the mobile student stays Qwen3.5-2B, which fits a phone at about 1.2 GB in 4-bit.
     evidence:
       - "Lead agent proposal, 2026-11-22 session notes (not approved)"
@@ -133,10 +133,11 @@ candidates:
     originating_task: Distillation
     confidence: MEDIUM
     conflicts: [DECISION-028]
-    explicit_user_feedback: false
+    explicit_user_feedback: true
+    decision_id: DECISION-054
 
   - id: CANDIDATE-009
-    status: NEEDS_DECISION
+    status: ADOPT
     proposal: Before training, measure GLM 5.3 agreement with Claude verdicts on student replies to dev prompts, never held-out ones.
     evidence:
       - "Lead agent proposal, 2026-11-22 session notes (not approved)"
@@ -146,10 +147,11 @@ candidates:
     originating_task: Distillation
     confidence: MEDIUM
     conflicts: []
-    explicit_user_feedback: false
+    explicit_user_feedback: true
+    decision_id: DECISION-055
 
   - id: CANDIDATE-010
-    status: NEEDS_DECISION
+    status: ADOPT
     proposal: Start with best-of-n, then preference pairs (DPO), before full GRPO.
     evidence:
       - "Lead agent proposal, 2026-11-22 session notes (not approved)"
@@ -158,7 +160,8 @@ candidates:
     originating_task: Distillation
     confidence: MEDIUM
     conflicts: []
-    explicit_user_feedback: false
+    explicit_user_feedback: true
+    decision_id: DECISION-056
 
   - id: CANDIDATE-011
     status: NEEDS_DECISION
