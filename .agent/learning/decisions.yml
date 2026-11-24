@@ -861,6 +861,7 @@ decisions:
     evidence:
       - "Maintainer: \"I am plannign to use glm 5.3 using opencode go subscription\""
       - "Lead agent session notes, 2026-11-22"
+      - "Maintainer, 2026-11-24: \"i want to use glm 5.3 via opencode as the teacher model\""
     source: USER_DECISION
     supersedes: []
     superseded_by: null
@@ -882,3 +883,60 @@ decisions:
     supersedes: [DECISION-021]
     superseded_by: null
     originating_task: Decision ledger setup
+
+  - id: DECISION-054
+    date: "2026-11-24"
+    status: APPROVED
+    topic: Distillation student
+    decision: >-
+      The distillation student is Qwen3.5-2B, chosen because it fits a phone (DECISION-050), not Bolt E4B.
+      This picks the fine-tune base only; which LLM the runtime uses now stays open (CANDIDATE-001).
+    evidence:
+      - "Maintainer answer, 2026-11-24 session: chose \"Qwen3.5-2B\" over \"Bolt E4B\" for the student"
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Distillation
+
+  - id: DECISION-055
+    date: "2026-11-24"
+    status: APPROVED
+    topic: Training judge calibration
+    decision: >-
+      Before training, measure how often GLM 5.3 agrees with Claude verdicts on student replies to dev
+      prompts. Held-out prompts are never used for calibration.
+    evidence:
+      - "Maintainer answer, 2026-11-24 session: chose \"Yes, calibrate first\""
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Distillation
+
+  - id: DECISION-056
+    date: "2026-11-24"
+    status: APPROVED
+    topic: Distillation stages
+    decision: >-
+      Round 1 is best-of-n: the student samples N replies per prompt, GLM 5.3 scores each whole reply, and the
+      student is fine-tuned on the top reply. Round 2 is DPO on best and worst pairs. GRPO is added only if
+      both rounds stall. Starting with DPO or GRPO was rejected.
+    evidence:
+      - "Maintainer answer, 2026-11-24 session: chose \"Best-of-n, then DPO\""
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Distillation
+
+  - id: DECISION-057
+    date: "2026-11-24"
+    status: APPROVED
+    topic: Training compute
+    decision: >-
+      Distillation training runs on a rented NVIDIA GPU with TRL, not MLX-LM on the Mac. The adapter is
+      converted to MLX before evals and before it ships.
+    evidence:
+      - "Maintainer answer, 2026-11-24 session: chose \"Rented NVIDIA GPU (TRL)\" over \"Mac, MLX-LM LoRA\""
+    source: USER_DECISION
+    supersedes: []
+    superseded_by: null
+    originating_task: Distillation
