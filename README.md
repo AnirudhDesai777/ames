@@ -107,20 +107,17 @@ Stub mode uses a fixed transcript, a fixed reply, and a tone in place of speech.
    uv sync --locked --extra mac
    ```
 
-3. Put the models on disk. The server never downloads weights. The revisions and hashes are in [docs/models.md](docs/models.md). All paths are under `~/Library/Application Support/Ames/models/`:
-   - `parakeet-tdt-0.6b-v2/`: the complete `mlx-community/parakeet-tdt-0.6b-v2` MLX model directory.
-   - `pocket-tts/`: the full `mlx-community/pocket-tts` snapshot. It must include `embeddings/azelma.safetensors` and `embeddings/marius.safetensors`.
-   - A complete mlx-lm model directory for the language model.
-
-   The recommended language model is NVIDIA Nemotron 3.5 Bolt E4B, MLX 4-bit. It scored best in the [LLM bake-off](docs/evals/llm-bakeoff.md). To download it:
+3. Download the models. This fetches speech to text, text to speech and the recommended language model at the revisions in [docs/models.md](docs/models.md), then checks their SHA-256 hashes. They go to `~/Library/Application Support/Ames/models/`. The download is about 7 GB.
 
    ```sh
-   uv run --locked --extra mac hf download lmstudio-community/NVIDIA-Nemotron-3.5-Bolt-E4B-MLX-4bit \
-     --revision 4274caa99dbacb12cbbca9bd9595a5063a33880f \
-     --local-dir "$HOME/Library/Application Support/Ames/models/nemotron-3.5-bolt-e4b-mlx-4bit"
+   uv run --locked --extra mac python -m server.download
    ```
 
-   A fine-tuned Ames model is in progress and is not published yet. You can use a different local mlx-lm model directory.
+   The models are public, so a Hugging Face token is optional. To use one for higher rate limits, put `HF_TOKEN=...` in a `.env` file in the repository root. Git ignores `.env`.
+
+   The recommended language model is NVIDIA Nemotron 3.5 Bolt E4B, MLX 4-bit. It scored best in the [LLM bake-off](docs/evals/llm-bakeoff.md). A fine-tuned Ames model is in progress and is not published yet. You can use a different local mlx-lm model directory.
+
+   The server itself never downloads weights.
 
 4. Set `AMES_LLM_MODEL` to the language model directory. The server does not start without it. There is no default. Then run:
 
